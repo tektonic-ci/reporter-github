@@ -13,6 +13,19 @@ export interface GitHubStatusReporterOptions {
   repoFullNameParam?: Param;
   /** Pipeline param supplying the commit SHA. Defaults to `new Param({ name: 'revision', type: 'string' })`. */
   revisionParam?: Param;
+  /**
+   * CPU/memory limits for each step in the auto-generated `set-status-pending` task.
+   * Each step makes a single HTTP POST to the GitHub Commit Status API; the default
+   * step resources (512Mi limit) are far more than needed and can cause OOM on
+   * memory-constrained nodes when many tasks report status (one step per task).
+   *
+   * Recommended values for a homelab or constrained cluster:
+   * `{ requests: { cpu: '25m', memory: '64Mi' }, limits: { cpu: '200m', memory: '128Mi' } }`
+   */
+  pendingTaskComputeResources?: {
+    requests?: { cpu?: string; memory?: string; 'ephemeral-storage'?: string };
+    limits?: { cpu?: string; memory?: string; 'ephemeral-storage'?: string };
+  };
 }
 
 /**
@@ -26,6 +39,7 @@ export class GitHubStatusReporter implements StatusReporter {
   private readonly tokenSecretName: string;
   private readonly repoParam: Param;
   private readonly revParam: Param;
+  private readonly pendingComputeResources: GitHubStatusReporterOptions['pendingTaskComputeResources'];
 
   readonly requiredParams: Param[];
 
@@ -35,6 +49,7 @@ export class GitHubStatusReporter implements StatusReporter {
     this.repoParam = opts.repoFullNameParam ?? new Param({ name: 'repo-full-name', type: 'string' });
     this.revParam = opts.revisionParam ?? new Param({ name: 'revision', type: 'string' });
     this.requiredParams = [this.repoParam, this.revParam];
+    this.pendingComputeResources = opts.pendingTaskComputeResources;
   }
 
   createPendingTask(contexts: string[]): Task {
@@ -47,6 +62,7 @@ export class GitHubStatusReporter implements StatusReporter {
         image: this.image,
         env: [tokenEnv],
         script: this.pendingScript(context),
+        ...(this.pendingComputeResources && { computeResources: this.pendingComputeResources }),
       })),
     });
   }
