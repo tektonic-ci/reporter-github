@@ -9,6 +9,12 @@ export interface GitHubStatusReporterOptions {
   image?: string;
   /** Name of the Kubernetes Secret containing the GitHub token (key: `"token"`). Defaults to `"github-token"`. */
   tokenSecretName?: string;
+  /**
+   * When true, skip per-step GITHUB_TOKEN injection via secretKeyRef.
+   * Use when GITHUB_TOKEN is already provided at the PipelineRun podTemplate level
+   * (e.g. via PAC's `{{ git_auth_secret }}` + `PACProjectOptions.podTemplateEnv`).
+   */
+  skipTokenInjection?: boolean;
   /** Pipeline param supplying the GitHub `owner/repo` value. Defaults to `new Param({ name: 'repo-full-name', type: 'string' })`. */
   repoFullNameParam?: Param;
   /** Pipeline param supplying the commit SHA. Defaults to `new Param({ name: 'revision', type: 'string' })`. */
@@ -37,6 +43,7 @@ export interface GitHubStatusReporterOptions {
 export class GitHubStatusReporter implements StatusReporter {
   private readonly image: string;
   private readonly tokenSecretName: string;
+  private readonly skipTokenInjection: boolean;
   private readonly repoParam: Param;
   private readonly revParam: Param;
   private readonly pendingComputeResources: GitHubStatusReporterOptions['pendingTaskComputeResources'];
@@ -46,6 +53,7 @@ export class GitHubStatusReporter implements StatusReporter {
   constructor(opts: GitHubStatusReporterOptions = {}) {
     this.image = opts.image ?? DEFAULT_BASE_IMAGE;
     this.tokenSecretName = opts.tokenSecretName ?? 'github-token';
+    this.skipTokenInjection = opts.skipTokenInjection ?? false;
     this.repoParam = opts.repoFullNameParam ?? new Param({ name: 'repo-full-name', type: 'string' });
     this.revParam = opts.revisionParam ?? new Param({ name: 'revision', type: 'string' });
     this.requiredParams = [this.repoParam, this.revParam];
@@ -53,14 +61,14 @@ export class GitHubStatusReporter implements StatusReporter {
   }
 
   createPendingTask(contexts: string[]): Task {
-    const tokenEnv = this.tokenEnv();
+    const env = this.skipTokenInjection ? [] : [this.tokenEnv()];
     return new Task({
       name: 'set-status-pending',
       params: this.requiredParams,
       steps: contexts.map(context => ({
         name: `pending-${context.replace(/\//g, '-')}`,
         image: this.image,
-        env: [tokenEnv],
+        env,
         script: this.pendingScript(context),
         ...(this.pendingComputeResources && { computeResources: this.pendingComputeResources }),
       })),
@@ -68,11 +76,11 @@ export class GitHubStatusReporter implements StatusReporter {
   }
 
   finalStep(context: string): TaskStepSpec {
-    const tokenEnv = this.tokenEnv();
+    const env = this.skipTokenInjection ? [] : [this.tokenEnv()];
     return {
       name: 'report-status',
       image: this.image,
-      env: [tokenEnv],
+      env,
       script: this.finalScript(context),
     };
   }

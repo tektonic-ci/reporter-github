@@ -53,6 +53,29 @@ describe('GitHubStatusReporter', () => {
     });
   });
 
+  describe('skipTokenInjection', () => {
+    it('omits GITHUB_TOKEN from pending step env when true', () => {
+      const reporter = new GitHubStatusReporter({ skipTokenInjection: true });
+      const task = reporter.createPendingTask(['ci/test']);
+      expect(task.steps[0].env).toHaveLength(0);
+    });
+
+    it('omits GITHUB_TOKEN from finalStep env when true', () => {
+      const reporter = new GitHubStatusReporter({ skipTokenInjection: true });
+      const step = reporter.finalStep('ci/test');
+      expect((step as any).env).toHaveLength(0);
+    });
+
+    it('includes GITHUB_TOKEN secretKeyRef by default', () => {
+      const reporter = new GitHubStatusReporter();
+      const task = reporter.createPendingTask(['ci/test']);
+      expect(task.steps[0].env).toContainEqual({
+        name: 'GITHUB_TOKEN',
+        valueFrom: { secretKeyRef: { name: 'github-token', key: 'token' } },
+      });
+    });
+  });
+
   describe('requiredParams', () => {
     it('includes repo-full-name and revision params', () => {
       const reporter = new GitHubStatusReporter();
