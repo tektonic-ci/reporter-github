@@ -2,6 +2,7 @@ import { Task, TaskStepSpec } from '../core/task';
 import { Param } from '../core/param';
 import { StatusReporter } from '../core/status-reporter';
 import { DEFAULT_BASE_IMAGE } from '../constants';
+import { EXIT_CODE_PATH } from '../script';
 
 /** Options for constructing a {@link GitHubStatusReporter}. */
 export interface GitHubStatusReporterOptions {
@@ -119,7 +120,7 @@ def log [msg: string] {
   print $"[(date now | format date '%H:%M:%S')] report-status [${context}]: ($msg)"
 }
 
-let exit_code = (try { open --raw /tekton/home/.exit-code | str trim | into int } catch { 1 })
+let exit_code = (try { open --raw ${EXIT_CODE_PATH} | str trim | into int } catch { 1 })
 let state = if $exit_code == 0 { "success" } else { "failure" }
 let desc = if $exit_code == 0 { "Passed" } else { "Failed" }
 
