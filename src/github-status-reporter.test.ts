@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { App, Chart } from 'cdk8s';
 import { GitHubStatusReporter } from './github-status-reporter';
+import { Task } from '../core/task';
 
 describe('GitHubStatusReporter', () => {
   describe('createPendingTask()', () => {
@@ -82,6 +83,27 @@ describe('GitHubStatusReporter', () => {
       const names = reporter.requiredParams.map(p => p.name);
       expect(names).toContain('repo-full-name');
       expect(names).toContain('revision');
+    });
+  });
+
+  describe('ScriptLanguage routing', () => {
+    const renderFinal = () => {
+      const reporter = new GitHubStatusReporter();
+      const t = new Task({ name: 'build', steps: [{ name: 'run', image: 'alpine' }], statusReporter: reporter, statusContext: 'ci/build' });
+      const app = new App();
+      const chart = new Chart(app, 'test');
+      t.synth(chart, 'ns');
+      return chart.toJson()[0].spec.steps.find((s: any) => s.name === 'report-status').script;
+    };
+
+    it('final step uses the plugin-generated nushell preamble (single shebang, generic log)', () => {
+      const script = renderFinal();
+      expect(script.match(/#!\/usr\/bin\/env nu/g)).toHaveLength(1);
+      expect(script).toContain("def log [msg: string] { print $\"[(date now | format date '%H:%M:%S')] ($msg)\" }");
+      // label supplied at the call site, not baked into a per-script def
+      expect(script).toContain('report-status [ci/build]: POST');
+      // http post logic preserved (kept on nushell)
+      expect(script).toContain('http post $url $body');
     });
   });
 });

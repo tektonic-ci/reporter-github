@@ -2,11 +2,14 @@ import { Task, TaskStepSpec } from '../core/task';
 import { Param } from '../core/param';
 import { StatusReporter } from '../core/status-reporter';
 import { DEFAULT_BASE_IMAGE } from '../constants';
-import { EXIT_CODE_PATH } from '../script';
+import { EXIT_CODE_PATH, Script, languageFor } from '../script';
 
 /** Options for constructing a {@link GitHubStatusReporter}. */
 export interface GitHubStatusReporterOptions {
-  /** Container image with nushell and curl. Defaults to `DEFAULT_BASE_IMAGE`. */
+  /**
+   * Container image providing nushell — the status POSTs use nushell `http post`.
+   * Defaults to `DEFAULT_BASE_IMAGE`.
+   */
   image?: string;
   /** Name of the Kubernetes Secret containing the GitHub token (key: `"token"`). Defaults to `"github-token"`. */
   tokenSecretName?: string;
@@ -86,61 +89,56 @@ export class GitHubStatusReporter implements StatusReporter {
     };
   }
 
-  private pendingScript(context: string): string {
+  // Both scripts are authored through the Nushell {@link ScriptLanguage} plugin
+  // so the shebang and `log` preamble are generated at synth time rather than
+  // hand-written here; the step label is supplied at each call site. The GitHub
+  // Commit Status API calls use nushell `http post`, so the reporter's image
+  // must provide nushell (see GitHubStatusReporterOptions.image).
+  private pendingScript(context: string): Script {
     const repo = `$(params.${this.repoParam.name})`;
     const rev = `$(params.${this.revParam.name})`;
-    return `#!/usr/bin/env nu
-def log [msg: string] {
-  print $"[(date now | format date '%H:%M:%S')] status-pending [${context}]: ($msg)"
-}
-
-let url = $"https://api.github.com/repos/${repo}/statuses/${rev}"
+    return new Script(languageFor('nushell'), `let url = $"https://api.github.com/repos/${repo}/statuses/${rev}"
 let body = { state: "pending", context: "${context}", description: "Running" }
 
-log $"POST ($url)"
-log $"body: ($body | to json -r)"
+log $"status-pending [${context}]: POST ($url)"
+log $"status-pending [${context}]: body: ($body | to json -r)"
 
 try {
   http post $url $body -t application/json -H [
     Authorization $"token ($env.GITHUB_TOKEN)"
     Accept "application/vnd.github+json"
   ]
-  log "done"
+  log "status-pending [${context}]: done"
 } catch { |e|
-  log $"error: ($e.msg)"
+  log $"status-pending [${context}]: error: ($e.msg)"
   exit 1
-}`;
+}`);
   }
 
-  private finalScript(context: string): string {
+  private finalScript(context: string): Script {
     const repo = `$(params.${this.repoParam.name})`;
     const rev = `$(params.${this.revParam.name})`;
-    return `#!/usr/bin/env nu
-def log [msg: string] {
-  print $"[(date now | format date '%H:%M:%S')] report-status [${context}]: ($msg)"
-}
-
-let exit_code = (try { open --raw ${EXIT_CODE_PATH} | str trim | into int } catch { 1 })
+    return new Script(languageFor('nushell'), `let exit_code = (try { open --raw ${EXIT_CODE_PATH} | str trim | into int } catch { 1 })
 let state = if $exit_code == 0 { "success" } else { "failure" }
 let desc = if $exit_code == 0 { "Passed" } else { "Failed" }
 
-log $"exit-code=($exit_code) state=($state)"
+log $"report-status [${context}]: exit-code=($exit_code) state=($state)"
 
 let url = $"https://api.github.com/repos/${repo}/statuses/${rev}"
 let body = { state: $state, context: "${context}", description: $desc }
 
-log $"POST ($url)"
-log $"body: ($body | to json -r)"
+log $"report-status [${context}]: POST ($url)"
+log $"report-status [${context}]: body: ($body | to json -r)"
 
 try {
   http post $url $body -t application/json -H [
     Authorization $"token ($env.GITHUB_TOKEN)"
     Accept "application/vnd.github+json"
   ]
-  log "done"
+  log "report-status [${context}]: done"
 } catch { |e|
-  log $"error: ($e.msg)"
-}`;
+  log $"report-status [${context}]: error: ($e.msg)"
+}`);
   }
 
   private tokenEnv() {
