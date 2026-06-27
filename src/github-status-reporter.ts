@@ -64,10 +64,10 @@ export class GitHubStatusReporter implements StatusReporter {
     this.pendingComputeResources = opts.pendingTaskComputeResources;
   }
 
-  createPendingTask(contexts: string[]): Task {
+  createPendingTask(contexts: string[], name = 'set-status-pending'): Task {
     const env = this.skipTokenInjection ? [] : [this.tokenEnv()];
     return new Task({
-      name: 'set-status-pending',
+      name,
       params: this.requiredParams,
       steps: contexts.map(context => ({
         name: `pending-${context.replace(/\//g, '-')}`,
