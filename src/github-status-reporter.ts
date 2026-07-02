@@ -36,6 +36,14 @@ export interface GitHubStatusReporterOptions {
     requests?: { cpu?: string; memory?: string; 'ephemeral-storage'?: string };
     limits?: { cpu?: string; memory?: string; 'ephemeral-storage'?: string };
   };
+  /**
+   * When true (the default), the final `report-status` step re-exits the captured
+   * exit code (`exit $exit_code`) after POSTing to GitHub, so a failed work step
+   * fails the TaskRun (and therefore the PipelineRun). Set false to preserve the
+   * legacy report-only behavior, where a failed step turns the commit status red
+   * but the TaskRun still reports Succeeded.
+   */
+  failOnError?: boolean;
 }
 
 /**
@@ -51,6 +59,7 @@ export class GitHubStatusReporter implements StatusReporter {
   private readonly repoParam: Param;
   private readonly revParam: Param;
   private readonly pendingComputeResources: GitHubStatusReporterOptions['pendingTaskComputeResources'];
+  private readonly failOnError: boolean;
 
   readonly requiredParams: Param[];
 
@@ -62,6 +71,7 @@ export class GitHubStatusReporter implements StatusReporter {
     this.revParam = opts.revisionParam ?? new Param({ name: 'revision', type: 'string' });
     this.requiredParams = [this.repoParam, this.revParam];
     this.pendingComputeResources = opts.pendingTaskComputeResources;
+    this.failOnError = opts.failOnError ?? true;
   }
 
   createPendingTask(contexts: string[], name = 'set-status-pending'): Task {
@@ -118,6 +128,10 @@ try {
   private finalScript(context: string): Script {
     const repo = `$(params.${this.repoParam.name})`;
     const rev = `$(params.${this.revParam.name})`;
+    // When failOnError, re-exit the captured code AFTER the POST so a failed work
+    // step fails the TaskRun. The report-status step is rendered without
+    // onError:continue, so this non-zero exit propagates.
+    const failLine = this.failOnError ? '\nexit $exit_code' : '';
     return new Script(languageFor('nushell'), `let exit_code = (try { open --raw ${EXIT_CODE_PATH} | str trim | into int } catch { 1 })
 let state = if $exit_code == 0 { "success" } else { "failure" }
 let desc = if $exit_code == 0 { "Passed" } else { "Failed" }
@@ -138,7 +152,7 @@ try {
   log "report-status [${context}]: done"
 } catch { |e|
   log $"report-status [${context}]: error: ($e.msg)"
-}`);
+}${failLine}`);
   }
 
   private tokenEnv() {

@@ -106,4 +106,28 @@ describe('GitHubStatusReporter', () => {
       expect(script).toContain('http post $url $body');
     });
   });
+
+  describe('failOnError', () => {
+    const renderFinalWith = (opts?: ConstructorParameters<typeof GitHubStatusReporter>[0]) => {
+      const reporter = new GitHubStatusReporter(opts);
+      const t = new Task({ name: 'build', steps: [{ name: 'run', image: 'alpine' }], statusReporter: reporter, statusContext: 'ci/build' });
+      const app = new App();
+      const chart = new Chart(app, 'test');
+      t.synth(chart, 'ns');
+      return chart.toJson()[0].spec.steps.find((s: any) => s.name === 'report-status').script;
+    };
+
+    it('re-exits the captured exit code by default (failed step fails the TaskRun)', () => {
+      const script = renderFinalWith();
+      // the exit follows the POST so GitHub still receives the status
+      expect(script).toContain('http post $url $body');
+      expect(script.trimEnd().endsWith('exit $exit_code')).toBe(true);
+    });
+
+    it('omits the re-exit when failOnError is false (legacy report-only behavior)', () => {
+      const script = renderFinalWith({ failOnError: false });
+      expect(script).toContain('http post $url $body');
+      expect(script).not.toContain('exit $exit_code');
+    });
+  });
 });
