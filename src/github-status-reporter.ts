@@ -16,7 +16,7 @@ export interface GitHubStatusReporterOptions {
   /**
    * When true, skip per-step GITHUB_TOKEN injection via secretKeyRef.
    * Use when GITHUB_TOKEN is already provided at the PipelineRun podTemplate level
-   * (e.g. via PAC's `{{ git_auth_secret }}` + `PACProjectOptions.podTemplateEnv`).
+   * (e.g. via PAC's `{{ git_auth_secret }}` + `TektonicProjectOptions.podTemplateEnv`).
    */
   skipTokenInjection?: boolean;
   /** Pipeline param supplying the GitHub `owner/repo` value. Defaults to `new Param({ name: 'repo-full-name', type: 'string' })`. */
