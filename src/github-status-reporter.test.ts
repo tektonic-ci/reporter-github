@@ -54,6 +54,44 @@ describe('GitHubStatusReporter', () => {
     });
   });
 
+  describe('createSkipResolverTask()', () => {
+    it('creates one step per entry, named after the context', () => {
+      const reporter = new GitHubStatusReporter();
+      const task = reporter.createSkipResolverTask([
+        { taskName: 'test', context: 'ci/test' },
+        { taskName: 'build', context: 'ci/build' },
+      ]);
+      expect(task.steps).toHaveLength(2);
+      expect(task.steps[0].name).toBe('resolve-ci-test');
+      expect(task.steps[1].name).toBe('resolve-ci-build');
+    });
+
+    it('defaults to the name "resolve-skipped-status"', () => {
+      const reporter = new GitHubStatusReporter();
+      const task = reporter.createSkipResolverTask([{ taskName: 'test', context: 'ci/test' }]);
+      expect(task.name).toBe('resolve-skipped-status');
+    });
+
+    it('checks the task\'s runtime status and only resolves when skipped', () => {
+      const reporter = new GitHubStatusReporter();
+      const task = reporter.createSkipResolverTask([{ taskName: 'deploy', context: 'ci/deploy' }]);
+      const app = new App();
+      const chart = new Chart(app, 'test');
+      task.synth(chart, 'ns');
+      const script = (chart.toJson()[0] as any).spec.steps[0].script;
+      expect(script).toContain('$(tasks.deploy.status)');
+      expect(script).toContain('if $status != "None"');
+      expect(script).toContain('state: "success"');
+      expect(script).toContain('description: "Skipped"');
+    });
+
+    it('omits GITHUB_TOKEN env when skipTokenInjection is true', () => {
+      const reporter = new GitHubStatusReporter({ skipTokenInjection: true });
+      const task = reporter.createSkipResolverTask([{ taskName: 'deploy', context: 'ci/deploy' }]);
+      expect(task.steps[0].env).toHaveLength(0);
+    });
+  });
+
   describe('skipTokenInjection', () => {
     it('omits GITHUB_TOKEN from pending step env when true', () => {
       const reporter = new GitHubStatusReporter({ skipTokenInjection: true });

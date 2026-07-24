@@ -89,6 +89,24 @@ export class GitHubStatusReporter implements StatusReporter {
     });
   }
 
+  createSkipResolverTask(
+    entries: { taskName: string; context: string }[],
+    name = 'resolve-skipped-status',
+  ): Task {
+    const env = this.skipTokenInjection ? [] : [this.tokenEnv()];
+    return new Task({
+      name,
+      params: this.requiredParams,
+      steps: entries.map(({ taskName, context }) => ({
+        name: `resolve-${context.replace(/\//g, '-')}`,
+        image: this.image,
+        env,
+        script: this.skipResolverScript(taskName, context),
+        ...(this.pendingComputeResources && { computeResources: this.pendingComputeResources }),
+      })),
+    });
+  }
+
   finalStep(context: string): TaskStepSpec {
     const env = this.skipTokenInjection ? [] : [this.tokenEnv()];
     return {
@@ -121,6 +139,39 @@ try {
   log "status-pending [${context}]: done"
 } catch { |e|
   log $"status-pending [${context}]: error: ($e.msg)"
+  exit 1
+}`);
+  }
+
+  // Runs in the pipeline's `finally` block, after the whole DAG has settled. Tekton resolves
+  // `$(tasks.<taskName>.status)` to "None" when that task was skipped by `when` (directly or
+  // because an ancestor was skipped/failed) — the only case this script needs to act on, since
+  // an actually-run task already reported itself via `finalStep`.
+  private skipResolverScript(taskName: string, context: string): Script {
+    const repo = `$(params.${this.repoParam.name})`;
+    const rev = `$(params.${this.revParam.name})`;
+    const status = `$(tasks.${taskName}.status)`;
+    return new Script(languageFor('nushell'), `let status = "${status}"
+
+if $status != "None" {
+  log $"resolve-skipped [${context}]: task status is ($status), nothing to resolve"
+  exit 0
+}
+
+let url = $"https://api.github.com/repos/${repo}/statuses/${rev}"
+let body = { state: "success", context: "${context}", description: "Skipped" }
+
+log $"resolve-skipped [${context}]: task was skipped, POST ($url)"
+log $"resolve-skipped [${context}]: body: ($body | to json -r)"
+
+try {
+  http post $url $body -t application/json -H [
+    Authorization $"token ($env.GITHUB_TOKEN)"
+    Accept "application/vnd.github+json"
+  ]
+  log "resolve-skipped [${context}]: done"
+} catch { |e|
+  log $"resolve-skipped [${context}]: error: ($e.msg)"
   exit 1
 }`);
   }
