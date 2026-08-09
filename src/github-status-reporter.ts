@@ -4,6 +4,22 @@ import { StatusReporter } from '../core/status-reporter';
 import { DEFAULT_BASE_IMAGE } from '../constants';
 import { EXIT_CODE_PATH, Script, languageFor } from '../script';
 
+/**
+ * Param carrying a pipeline task's runtime status into the skip-resolver task.
+ *
+ * The value is bound by the finally PipelineTask to `$(tasks.<taskName>.status)` — the only
+ * scope in which Tekton substitutes that variable. Keyed on the task name (already a valid
+ * Kubernetes name, unique within a pipeline) rather than the status context, which may
+ * contain `/`.
+ */
+export function statusParam(taskName: string): Param {
+  return new Param({
+    name: `status-${taskName}`,
+    type: 'string',
+    pipelineExpression: `$(tasks.${taskName}.status)`,
+  });
+}
+
 /** Options for constructing a {@link GitHubStatusReporter}. */
 export interface GitHubStatusReporterOptions {
   /**
@@ -84,6 +100,9 @@ export class GitHubStatusReporter implements StatusReporter {
         image: this.image,
         env,
         script: this.pendingScript(context),
+        // See createSkipResolverTask: one failed POST must not stop the remaining contexts
+        // from being initialised.
+        onError: 'continue' as const,
         ...(this.pendingComputeResources && { computeResources: this.pendingComputeResources }),
       })),
     });
@@ -94,14 +113,24 @@ export class GitHubStatusReporter implements StatusReporter {
     name = 'resolve-skipped-status',
   ): Task {
     const env = this.skipTokenInjection ? [] : [this.tokenEnv()];
+    // One param per entry carrying that task's runtime status. `pipelineExpression` makes the
+    // finally PipelineTask supply `$(tasks.<taskName>.status)` as the value — see
+    // skipResolverScript for why the status cannot be referenced from the script directly.
+    // Keyed on taskName, not context: task names are already valid Kubernetes names and are
+    // unique within a pipeline, whereas a context may contain `/`.
+    const statusParams = entries.map(({ taskName }) => statusParam(taskName));
     return new Task({
       name,
-      params: this.requiredParams,
-      steps: entries.map(({ taskName, context }) => ({
+      params: [...this.requiredParams, ...statusParams],
+      steps: entries.map(({ taskName, context }, i) => ({
         name: `resolve-${context.replace(/\//g, '-')}`,
         image: this.image,
         env,
-        script: this.skipResolverScript(taskName, context),
+        script: this.skipResolverScript(statusParams[i], context),
+        // Tekton skips every remaining step in a pod once a step exits non-zero, so without
+        // this a single failed POST silently swallows all later contexts. The step still
+        // exits 1 on failure, so the failure stays visible in the TaskRun's step state.
+        onError: 'continue' as const,
         ...(this.pendingComputeResources && { computeResources: this.pendingComputeResources }),
       })),
     });
@@ -147,10 +176,15 @@ try {
   // `$(tasks.<taskName>.status)` to "None" when that task was skipped by `when` (directly or
   // because an ancestor was skipped/failed) — the only case this script needs to act on, since
   // an actually-run task already reported itself via `finalStep`.
-  private skipResolverScript(taskName: string, context: string): Script {
+  //
+  // The status arrives as a param, NOT as `$(tasks.<taskName>.status)` written inline here.
+  // Tekton substitutes `$(tasks.*)` in a PipelineTask's params and `when`, but not inside a
+  // referenced Task's step script — written inline it stays a literal string, never equals
+  // "None", and every step short-circuits without ever POSTing. `statusParam` carries the
+  // real expression to the finally PipelineTask via `Param.pipelineExpression`.
+  private skipResolverScript(status: Param, context: string): Script {
     const repo = `$(params.${this.repoParam.name})`;
     const rev = `$(params.${this.revParam.name})`;
-    const status = `$(tasks.${taskName}.status)`;
     return new Script(languageFor('nushell'), `let status = "${status}"
 
 if $status != "None" {
