@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { App, Chart } from 'cdk8s';
 import { GitHubStatusReporter, statusParam } from './github-status-reporter';
 import { Task } from '../core/task';
+import { Workspace } from '../core/workspace';
+import { EXIT_CODE_PATH } from '../script';
 
 describe('GitHubStatusReporter', () => {
   describe('createPendingTask()', () => {
@@ -231,6 +233,72 @@ describe('GitHubStatusReporter', () => {
       const script = renderFinalWith({ failOnError: false });
       expect(script).toContain('http post $url $body');
       expect(script).not.toContain('exit $exit_code');
+    });
+  });
+
+  // The contract file is written by the wrapped script, so a body calling the shell's
+  // `exit` — untrappable in nushell — leaves it at a stale 0 and the reporter posts
+  // success on a real failure. Tekton's own per-step files are written by the
+  // entrypoint and survive that, so the reporter consults both and takes the worst.
+  describe('per-step exit codes', () => {
+    const renderStepsFor = (task: Task) => {
+      const app = new App();
+      const chart = new Chart(app, 'test');
+      task.synth(chart, 'ns');
+      return chart.toJson()[0].spec.steps as { name: string; script?: string; onError?: string }[];
+    };
+    const renderFinalFor = (task: Task) =>
+      renderStepsFor(task).find((s) => s.name === 'report-status')!.script!;
+
+    const taskWith = (opts: Record<string, unknown>) =>
+      new Task({
+        name: 'build',
+        statusReporter: new GitHubStatusReporter(),
+        statusContext: 'ci/build',
+        ...opts,
+      } as ConstructorParameters<typeof Task>[0]);
+
+    it('reads the per-step exitCode file for every user step', () => {
+      const script = renderFinalFor(
+        taskWith({ steps: [{ name: 'compile', image: 'alpine' }, { name: 'verify', image: 'alpine' }] }),
+      );
+      expect(script).toContain('"/tekton/steps/step-compile/exitCode"');
+      expect(script).toContain('"/tekton/steps/step-verify/exitCode"');
+    });
+
+    it('takes the worst of the contract file and the per-step codes', () => {
+      const script = renderFinalFor(taskWith({ steps: [{ name: 'compile', image: 'alpine' }] }));
+      expect(script).toContain(`open --raw ${EXIT_CODE_PATH}`);
+      expect(script).toContain('[$contract_code ...$step_codes] | math max');
+    });
+
+    it('treats a missing per-step file as 0 so a step that never ran cannot fail the task', () => {
+      const script = renderFinalFor(taskWith({ steps: [{ name: 'compile', image: 'alpine' }] }));
+      expect(script).toContain('try { open --raw $p | str trim | into int } catch { 0 }');
+    });
+
+    it('excludes the injected cache steps, so a failed cache save stays non-fatal', () => {
+      const cacheWs = new Workspace({ name: 'npm-cache' });
+      const steps = renderStepsFor(
+        taskWith({
+          steps: [{ name: 'compile', image: 'alpine' }],
+          caches: [{ name: 'npm', key: ['package-lock.json'], paths: ['node_modules'], workspace: cacheWs }],
+        }),
+      );
+      const script = steps.find((s) => s.name === 'report-status')!.script!;
+      // The cache steps really are steps in the rendered task, so excluding them has to be
+      // deliberate. Assert that premise rather than trusting a bare not.toContain, which
+      // would also pass if the steps were named something else entirely. The save step is
+      // the pointed case: it carries onError:continue so a failed cache write is non-fatal,
+      // which is exactly the verdict consulting its exit code would silently overturn.
+      const cacheSteps = steps.filter((s) => s.name !== 'compile' && s.name !== 'report-status');
+      expect(cacheSteps.map((s) => s.name)).toEqual(['restore-npm-cache', 'save-npm-cache']);
+      expect(cacheSteps.find((s) => s.name === 'save-npm-cache')!.onError).toBe('continue');
+
+      expect(script).toContain('"/tekton/steps/step-compile/exitCode"');
+      for (const s of cacheSteps) {
+        expect(script).not.toContain(`step-${s.name}/exitCode`);
+      }
     });
   });
 });

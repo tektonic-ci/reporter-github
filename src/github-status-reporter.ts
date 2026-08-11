@@ -2,7 +2,7 @@ import { Task, TaskStepSpec } from '../core/task';
 import { Param } from '../core/param';
 import { StatusReporter } from '../core/status-reporter';
 import { DEFAULT_BASE_IMAGE } from '../constants';
-import { EXIT_CODE_PATH, Script, languageFor } from '../script';
+import { EXIT_CODE_PATH, stepExitCodePath, Script, languageFor } from '../script';
 
 /**
  * Param carrying a pipeline task's runtime status into the skip-resolver task.
@@ -136,13 +136,13 @@ export class GitHubStatusReporter implements StatusReporter {
     });
   }
 
-  finalStep(context: string): TaskStepSpec {
+  finalStep(context: string, userStepNames: string[] = []): TaskStepSpec {
     const env = this.skipTokenInjection ? [] : [this.tokenEnv()];
     return {
       name: 'report-status',
       image: this.image,
       env,
-      script: this.finalScript(context),
+      script: this.finalScript(context, userStepNames),
     };
   }
 
@@ -210,14 +210,25 @@ try {
 }`);
   }
 
-  private finalScript(context: string): Script {
+  private finalScript(context: string, userStepNames: string[]): Script {
     const repo = `$(params.${this.repoParam.name})`;
     const rev = `$(params.${this.revParam.name})`;
     // When failOnError, re-exit the captured code AFTER the POST so a failed work
     // step fails the TaskRun. The report-status step is rendered without
     // onError:continue, so this non-zero exit propagates.
     const failLine = this.failOnError ? '\nexit $exit_code' : '';
-    return new Script(languageFor('nushell'), `let exit_code = (try { open --raw ${EXIT_CODE_PATH} | str trim | into int } catch { 1 })
+    // Two sources, worst wins. The contract file is what the wrapped script writes;
+    // Tekton's per-step files are what the *entrypoint* writes, and they are the only
+    // ones that survive a body calling the shell's `exit` (untrappable in nushell, so
+    // the wrapper never runs and the contract file keeps a stale 0 — the failure mode
+    // that had a task reporting green on real drift). Reading both means a Tekton that
+    // does not write the per-step files degrades to the old behaviour rather than
+    // reporting a blanket success.
+    const stepPaths = userStepNames.map((n) => `"${stepExitCodePath(n)}"`).join(' ');
+    return new Script(languageFor('nushell'), `let contract_code = (try { open --raw ${EXIT_CODE_PATH} | str trim | into int } catch { 1 })
+# A step that never ran has no file; 0 keeps it out of the max.
+let step_codes = ([${stepPaths}] | each { |p| try { open --raw $p | str trim | into int } catch { 0 } })
+let exit_code = ([$contract_code ...$step_codes] | math max)
 let state = if $exit_code == 0 { "success" } else { "failure" }
 let desc = if $exit_code == 0 { "Passed" } else { "Failed" }
 
