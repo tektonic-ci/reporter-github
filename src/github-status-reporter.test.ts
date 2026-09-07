@@ -56,10 +56,10 @@ describe('GitHubStatusReporter', () => {
     });
   });
 
-  describe('createSkipResolverTask()', () => {
+  describe('createStatusReconcilerTask()', () => {
     it('creates one step per entry, named after the context', () => {
       const reporter = new GitHubStatusReporter();
-      const task = reporter.createSkipResolverTask([
+      const task = reporter.createStatusReconcilerTask([
         { taskName: 'test', context: 'ci/test' },
         { taskName: 'build', context: 'ci/build' },
       ]);
@@ -68,30 +68,47 @@ describe('GitHubStatusReporter', () => {
       expect(task.steps[1].name).toBe('resolve-ci-build');
     });
 
-    it('defaults to the name "resolve-skipped-status"', () => {
+    it('defaults to the name "reconcile-status"', () => {
+      const reporter = new GitHubStatusReporter();
+      const task = reporter.createStatusReconcilerTask([{ taskName: 'test', context: 'ci/test' }]);
+      expect(task.name).toBe('reconcile-status');
+    });
+
+    // Kept so external callers pinned to the older StatusReporter method keep working.
+    it('createSkipResolverTask() delegates, keeping its legacy default name', () => {
       const reporter = new GitHubStatusReporter();
       const task = reporter.createSkipResolverTask([{ taskName: 'test', context: 'ci/test' }]);
       expect(task.name).toBe('resolve-skipped-status');
+      expect(task.steps).toHaveLength(1);
     });
 
-    it('checks the task\'s runtime status and only resolves when skipped', () => {
+    const scriptFor = (taskName: string, context: string) => {
       const reporter = new GitHubStatusReporter();
-      const task = reporter.createSkipResolverTask([{ taskName: 'deploy', context: 'ci/deploy' }]);
+      const task = reporter.createStatusReconcilerTask([{ taskName, context }]);
       const app = new App();
       const chart = new Chart(app, 'test');
       task.synth(chart, 'ns');
-      const script = (chart.toJson()[0] as any).spec.steps[0].script;
+      return (chart.toJson()[0] as any).spec.steps[0].script as string;
+    };
+
+    it('acts only on the statuses that mean report-status never ran', () => {
+      const script = scriptFor('deploy', 'ci/deploy');
       expect(script).toContain('$(params.status-deploy)');
-      expect(script).toContain('if $status != "None"');
-      expect(script).toContain('state: "success"');
-      expect(script).toContain('description: "Skipped"');
+      expect(script).toContain('if $status not-in ["None" "Failed"]');
+      expect(script).toContain('exit 0');
+    });
+
+    it('reports a skipped task green and a failed or terminated one red', () => {
+      const script = scriptFor('deploy', 'ci/deploy');
+      expect(script).toContain('let state = if $status == "None" { "success" } else { "failure" }');
+      expect(script).toContain('let desc = if $status == "None" { "Skipped" } else { "Failed or terminated" }');
     });
 
     // Tekton substitutes $(tasks.*) in a PipelineTask's params, not in a referenced Task's
     // step script. Written inline the status stayed literal and no context was ever resolved.
     it('reads the status from a param instead of inlining $(tasks.X.status) in the script', () => {
       const reporter = new GitHubStatusReporter();
-      const task = reporter.createSkipResolverTask([{ taskName: 'deploy', context: 'ci/deploy' }]);
+      const task = reporter.createStatusReconcilerTask([{ taskName: 'deploy', context: 'ci/deploy' }]);
       const app = new App();
       const chart = new Chart(app, 'test');
       task.synth(chart, 'ns');
@@ -100,7 +117,7 @@ describe('GitHubStatusReporter', () => {
 
     it('declares a status param per entry alongside the required params', () => {
       const reporter = new GitHubStatusReporter();
-      const task = reporter.createSkipResolverTask([
+      const task = reporter.createStatusReconcilerTask([
         { taskName: 'deploy', context: 'ci/deploy' },
         { taskName: 'test', context: 'ci/test' },
       ]);
@@ -114,7 +131,7 @@ describe('GitHubStatusReporter', () => {
 
     it('binds each status param to $(tasks.X.status) in the pipeline task spec', () => {
       const reporter = new GitHubStatusReporter();
-      const task = reporter.createSkipResolverTask([{ taskName: 'deploy', context: 'ci/deploy' }]);
+      const task = reporter.createStatusReconcilerTask([{ taskName: 'deploy', context: 'ci/deploy' }]);
       const spec = task._toPipelineTaskSpec([]) as any;
       expect(spec.params).toContainEqual({
         name: 'status-deploy',
@@ -131,7 +148,7 @@ describe('GitHubStatusReporter', () => {
     // keeps it a valid Tekton param reference.
     it('names the status param after the task, not the slash-bearing context', () => {
       const reporter = new GitHubStatusReporter();
-      const task = reporter.createSkipResolverTask([{ taskName: 'lint-go', context: 'ci/lint/go' }]);
+      const task = reporter.createStatusReconcilerTask([{ taskName: 'lint-go', context: 'ci/lint/go' }]);
       expect(task.params.map(p => p.name)).toContain('status-lint-go');
       expect(task.params.every(p => !p.name.includes('/'))).toBe(true);
     });
@@ -140,7 +157,7 @@ describe('GitHubStatusReporter', () => {
     // failed POST swallows all later contexts.
     it('marks every resolve step onError: continue so one failure cannot cascade', () => {
       const reporter = new GitHubStatusReporter();
-      const task = reporter.createSkipResolverTask([
+      const task = reporter.createStatusReconcilerTask([
         { taskName: 'deploy', context: 'ci/deploy' },
         { taskName: 'test', context: 'ci/test' },
       ]);
@@ -154,7 +171,7 @@ describe('GitHubStatusReporter', () => {
 
     it('omits GITHUB_TOKEN env when skipTokenInjection is true', () => {
       const reporter = new GitHubStatusReporter({ skipTokenInjection: true });
-      const task = reporter.createSkipResolverTask([{ taskName: 'deploy', context: 'ci/deploy' }]);
+      const task = reporter.createStatusReconcilerTask([{ taskName: 'deploy', context: 'ci/deploy' }]);
       expect(task.steps[0].env).toHaveLength(0);
     });
   });

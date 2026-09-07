@@ -108,9 +108,20 @@ export class GitHubStatusReporter implements StatusReporter {
     });
   }
 
+  /**
+   * @deprecated Use {@link createStatusReconcilerTask}. Retained so callers pinned to the
+   * older {@link StatusReporter} method keep working; behaviour is identical.
+   */
   createSkipResolverTask(
     entries: { taskName: string; context: string }[],
     name = 'resolve-skipped-status',
+  ): Task {
+    return this.createStatusReconcilerTask(entries, name);
+  }
+
+  createStatusReconcilerTask(
+    entries: { taskName: string; context: string }[],
+    name = 'reconcile-status',
   ): Task {
     const env = this.skipTokenInjection ? [] : [this.tokenEnv()];
     // One param per entry carrying that task's runtime status. `pipelineExpression` makes the
@@ -126,7 +137,7 @@ export class GitHubStatusReporter implements StatusReporter {
         name: `resolve-${context.replace(/\//g, '-')}`,
         image: this.image,
         env,
-        script: this.skipResolverScript(statusParams[i], context),
+        script: this.reconcileScript(statusParams[i], context),
         // Tekton skips every remaining step in a pod once a step exits non-zero, so without
         // this a single failed POST silently swallows all later contexts. The step still
         // exits 1 on failure, so the failure stays visible in the TaskRun's step state.
@@ -172,40 +183,48 @@ try {
 }`);
   }
 
-  // Runs in the pipeline's `finally` block, after the whole DAG has settled. Tekton resolves
-  // `$(tasks.<taskName>.status)` to "None" when that task was skipped by `when` (directly or
-  // because an ancestor was skipped/failed) — the only case this script needs to act on, since
-  // an actually-run task already reported itself via `finalStep`.
+  // Runs in the pipeline's `finally` block, after the whole DAG has settled, and acts on the
+  // two statuses that mean the task's own `report-status` step never ran:
+  //   None   — skipped by `when` (directly, or because an ancestor was skipped/failed).
+  //   Failed — failed, including infrastructure kills (OOMKill, eviction, image-pull failure,
+  //            TaskRun timeout) that terminate the pod before any step of the task runs. For a
+  //            task that did run and reported its own failure this re-POSTs the same red state,
+  //            which is idempotent for the context; without it an OOMKilled task leaves its
+  //            context pending forever with no signal.
+  // A task that succeeded already reported itself via `finalStep`, so the step no-ops.
   //
   // The status arrives as a param, NOT as `$(tasks.<taskName>.status)` written inline here.
   // Tekton substitutes `$(tasks.*)` in a PipelineTask's params and `when`, but not inside a
   // referenced Task's step script — written inline it stays a literal string, never equals
   // "None", and every step short-circuits without ever POSTing. `statusParam` carries the
   // real expression to the finally PipelineTask via `Param.pipelineExpression`.
-  private skipResolverScript(status: Param, context: string): Script {
+  private reconcileScript(status: Param, context: string): Script {
     const repo = `$(params.${this.repoParam.name})`;
     const rev = `$(params.${this.revParam.name})`;
     return new Script(languageFor('nushell'), `let status = "${status}"
 
-if $status != "None" {
-  log $"resolve-skipped [${context}]: task status is ($status), nothing to resolve"
+if $status not-in ["None" "Failed"] {
+  log $"reconcile-status [${context}]: task status is ($status), nothing to resolve"
   exit 0
 }
 
-let url = $"https://api.github.com/repos/${repo}/statuses/${rev}"
-let body = { state: "success", context: "${context}", description: "Skipped" }
+let state = if $status == "None" { "success" } else { "failure" }
+let desc = if $status == "None" { "Skipped" } else { "Failed or terminated" }
 
-log $"resolve-skipped [${context}]: task was skipped, POST ($url)"
-log $"resolve-skipped [${context}]: body: ($body | to json -r)"
+let url = $"https://api.github.com/repos/${repo}/statuses/${rev}"
+let body = { state: $state, context: "${context}", description: $desc }
+
+log $"reconcile-status [${context}]: task status is ($status), POST ($url)"
+log $"reconcile-status [${context}]: body: ($body | to json -r)"
 
 try {
   http post $url $body -t application/json -H [
     Authorization $"token ($env.GITHUB_TOKEN)"
     Accept "application/vnd.github+json"
   ]
-  log "resolve-skipped [${context}]: done"
+  log "reconcile-status [${context}]: done"
 } catch { |e|
-  log $"resolve-skipped [${context}]: error: ($e.msg)"
+  log $"reconcile-status [${context}]: error: ($e.msg)"
   exit 1
 }`);
   }
