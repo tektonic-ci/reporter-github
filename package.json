@@ -1,0 +1,44 @@
+{
+  "name": "@pfenerty/tektonic-reporter-github",
+  "version": "2.0.0",
+  "description": "GitHub Commit Status reporter for tektonic",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pfenerty/tektonic.git",
+    "directory": "packages/tektonic-reporter-github"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "dist/**/*.d.ts.map",
+    "dist/**/*.js.map",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -p tsconfig.test.json"
+  },
+  "peerDependencies": {
+    "@pfenerty/tektonic": "^2.0.0"
+  },
+  "devDependencies": {
+    "@pfenerty/tektonic": "^2.0.0",
+    "@types/node": "^26.0.0",
+    "typescript": "~7.0.0",
+    "vitest": "^5.0.0"
+  }
+}
