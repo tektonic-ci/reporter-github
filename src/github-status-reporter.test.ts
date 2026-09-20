@@ -1,9 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { App, Chart } from 'cdk8s';
 import { GitHubStatusReporter, statusParam } from './github-status-reporter';
-import { Task } from '../core/task';
-import { Workspace } from '../core/workspace';
-import { EXIT_CODE_PATH } from '../script';
+import { EXIT_CODE_PATH, Pipeline, Task, Workspace } from '@pfenerty/tektonic';
+import { synthPipeline, synthTask } from '@pfenerty/tektonic/testing';
 
 // The reporter POSTs with nushell `http post`, so its steps resolve to a project image that
 // must declare `nushell` — tektonic's neutral fallback does not, by design.
@@ -277,7 +276,7 @@ describe('GitHubStatusReporter', () => {
         statusReporter: new GitHubStatusReporter(),
         statusContext: 'ci/build',
         ...opts,
-      } as ConstructorParameters<typeof Task>[0]);
+      } as unknown as ConstructorParameters<typeof Task>[0]);
 
     it('reads the per-step exitCode file for every user step', () => {
       const script = renderFinalFor(
@@ -321,5 +320,57 @@ describe('GitHubStatusReporter', () => {
         expect(script).not.toContain(`step-${s.name}/exitCode`);
       }
     });
+  });
+});
+
+describe('consuming tektonic from outside the package', () => {
+  // This suite exists because the reporter now lives outside @pfenerty/tektonic, and these
+  // are the things that stopped being free when it did. Each one is reachable only through
+  // the published surface; if an export is withdrawn, this file stops compiling.
+
+  it('resolves its image through the project, and synthesis names the missing capability', () => {
+    const reporting = new Task({
+      name: 'c',
+      statusReporter: new GitHubStatusReporter(),
+      statusContext: 'ci/c',
+      steps: [{ name: 's', image: 'alpine' }],
+    });
+    // The status POSTs use nushell `http post`, so injectedImageRef('nushell') is what the
+    // reporter asks the project's image for — not a hardcoded image of its own.
+    expect(() => synthTask(reporting)).toThrow(/needs an image providing nushell/);
+    expect(() =>
+      synthTask(reporting, { injectedStepImage: { image: 'ghcr.io/example/ci:1', provides: ['nushell'] } }),
+    ).not.toThrow();
+  });
+
+  it('an explicit reporter image beats the project image', () => {
+    const view = synthTask(
+      new Task({
+        name: 'c',
+        statusReporter: new GitHubStatusReporter({ image: 'ghcr.io/example/reporter:1' }),
+        statusContext: 'ci/c',
+        steps: [{ name: 's', image: 'alpine' }],
+      }),
+      { injectedStepImage: 'ghcr.io/example/ci-base:test' },
+    );
+    expect(view.step('report-status').image).toBe('ghcr.io/example/reporter:1');
+  });
+
+  it('reconciles through a param, because $(tasks.*) stays literal inside a step script', () => {
+    const reporter = new GitHubStatusReporter();
+    const pipeline = new Pipeline({
+      name: 'ci',
+      tasks: [
+        new Task({
+          name: 'deploy',
+          statusReporter: reporter,
+          steps: [{ name: 's', image: 'alpine', onError: 'continue' }],
+        }),
+      ],
+    });
+    const reconcile = synthPipeline(pipeline).task('reconcile-status-ci');
+    expect(reconcile.params['status-deploy']).toBe('$(tasks.deploy.status)');
+    // ...and the expression must not leak into the pipeline's own interface.
+    expect(synthPipeline(pipeline).paramNames).not.toContain('status-deploy');
   });
 });
