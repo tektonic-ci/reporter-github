@@ -1,7 +1,7 @@
 import { Task, TaskStepSpec } from '../core/task';
 import { Param } from '../core/param';
 import { StatusReporter } from '../core/status-reporter';
-import { DEFAULT_BASE_IMAGE } from '../constants';
+import { injectedImageRef } from '../core/injected-image';
 import { EXIT_CODE_PATH, stepExitCodePath, Script, languageFor } from '../script';
 
 /**
@@ -24,7 +24,7 @@ export function statusParam(taskName: string): Param {
 export interface GitHubStatusReporterOptions {
   /**
    * Container image providing nushell — the status POSTs use nushell `http post`.
-   * Defaults to `DEFAULT_BASE_IMAGE`.
+   * Defaults to the project's `injectedStepImage`, which must then declare `nushell`.
    */
   image?: string;
   /** Name of the Kubernetes Secret containing the GitHub token (key: `"token"`). Defaults to `"github-token"`. */
@@ -80,7 +80,7 @@ export class GitHubStatusReporter implements StatusReporter {
   readonly requiredParams: Param[];
 
   constructor(opts: GitHubStatusReporterOptions = {}) {
-    this.image = opts.image ?? DEFAULT_BASE_IMAGE;
+    this.image = opts.image ?? injectedImageRef('nushell');
     this.tokenSecretName = opts.tokenSecretName ?? 'github-token';
     this.skipTokenInjection = opts.skipTokenInjection ?? false;
     this.repoParam = opts.repoFullNameParam ?? new Param({ name: 'repo-full-name', type: 'string' });
