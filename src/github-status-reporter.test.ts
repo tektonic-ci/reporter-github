@@ -5,6 +5,10 @@ import { Task } from '../core/task';
 import { Workspace } from '../core/workspace';
 import { EXIT_CODE_PATH } from '../script';
 
+// The reporter POSTs with nushell `http post`, so its steps resolve to a project image that
+// must declare `nushell` — tektonic's neutral fallback does not, by design.
+const CAPABLE = { injectedStepImage: 'ghcr.io/example/ci-base:test' } as const;
+
 describe('GitHubStatusReporter', () => {
   describe('createPendingTask()', () => {
     it('creates one step per context', () => {
@@ -48,7 +52,7 @@ describe('GitHubStatusReporter', () => {
       const task = reporter.createPendingTask(['go-test', 'go-build']);
       const app = new App();
       const chart = new Chart(app, 'test');
-      task.synth(chart, 'ns');
+      task.synth(chart, 'ns', CAPABLE);
       const manifest = chart.toJson()[0] as any;
       for (const step of manifest.spec.steps) {
         expect(step.computeResources).toEqual(resources);
@@ -87,7 +91,7 @@ describe('GitHubStatusReporter', () => {
       const task = reporter.createStatusReconcilerTask([{ taskName, context }]);
       const app = new App();
       const chart = new Chart(app, 'test');
-      task.synth(chart, 'ns');
+      task.synth(chart, 'ns', CAPABLE);
       return (chart.toJson()[0] as any).spec.steps[0].script as string;
     };
 
@@ -111,7 +115,7 @@ describe('GitHubStatusReporter', () => {
       const task = reporter.createStatusReconcilerTask([{ taskName: 'deploy', context: 'ci/deploy' }]);
       const app = new App();
       const chart = new Chart(app, 'test');
-      task.synth(chart, 'ns');
+      task.synth(chart, 'ns', CAPABLE);
       expect((chart.toJson()[0] as any).spec.steps[0].script).not.toContain('$(tasks.');
     });
 
@@ -163,7 +167,7 @@ describe('GitHubStatusReporter', () => {
       ]);
       const app = new App();
       const chart = new Chart(app, 'test');
-      task.synth(chart, 'ns');
+      task.synth(chart, 'ns', CAPABLE);
       for (const step of (chart.toJson()[0] as any).spec.steps) {
         expect(step.onError).toBe('continue');
       }
@@ -214,7 +218,7 @@ describe('GitHubStatusReporter', () => {
       const t = new Task({ name: 'build', steps: [{ name: 'run', image: 'alpine' }], statusReporter: reporter, statusContext: 'ci/build' });
       const app = new App();
       const chart = new Chart(app, 'test');
-      t.synth(chart, 'ns');
+      t.synth(chart, 'ns', CAPABLE);
       return chart.toJson()[0].spec.steps.find((s: any) => s.name === 'report-status').script;
     };
 
@@ -235,7 +239,7 @@ describe('GitHubStatusReporter', () => {
       const t = new Task({ name: 'build', steps: [{ name: 'run', image: 'alpine' }], statusReporter: reporter, statusContext: 'ci/build' });
       const app = new App();
       const chart = new Chart(app, 'test');
-      t.synth(chart, 'ns');
+      t.synth(chart, 'ns', CAPABLE);
       return chart.toJson()[0].spec.steps.find((s: any) => s.name === 'report-status').script;
     };
 
@@ -261,7 +265,7 @@ describe('GitHubStatusReporter', () => {
     const renderStepsFor = (task: Task) => {
       const app = new App();
       const chart = new Chart(app, 'test');
-      task.synth(chart, 'ns');
+      task.synth(chart, 'ns', CAPABLE);
       return chart.toJson()[0].spec.steps as { name: string; script?: string; onError?: string }[];
     };
     const renderFinalFor = (task: Task) =>
