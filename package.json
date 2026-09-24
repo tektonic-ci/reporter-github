@@ -1,6 +1,6 @@
 {
   "name": "@pfenerty/tektonic-reporter-github",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "GitHub Commit Status reporter for tektonic",
   "license": "Apache-2.0",
   "repository": {
@@ -33,10 +33,10 @@
     "typecheck": "tsc -p tsconfig.test.json"
   },
   "peerDependencies": {
-    "@pfenerty/tektonic": "^2.0.0"
+    "@pfenerty/tektonic": "^2.0.1"
   },
   "devDependencies": {
-    "@pfenerty/tektonic": "^2.0.0",
+    "@pfenerty/tektonic": "^2.0.1",
     "@types/node": "^26.0.0",
     "typescript": "~7.0.0",
     "vitest": "^5.0.0"
