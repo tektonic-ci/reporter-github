@@ -10,18 +10,27 @@ const CAPABLE = { injectedStepImage: 'ghcr.io/example/ci-base:test' } as const;
 
 describe('GitHubStatusReporter', () => {
   describe('createPendingTask()', () => {
-    it('creates one step per context', () => {
-      const reporter = new GitHubStatusReporter();
-      const task = reporter.createPendingTask(['ci/test', 'ci/build']);
-      expect(task.steps).toHaveLength(2);
-      expect(task.steps[0].name).toBe('pending-ci-test');
-      expect(task.steps[1].name).toBe('pending-ci-build');
+    const pendingScript = (contexts: string[]) => {
+      const chart = new Chart(new App(), 'test');
+      new GitHubStatusReporter().createPendingTask(contexts).synth(chart, 'ns', CAPABLE);
+      return (chart.toJson()[0] as any).spec.steps[0].script as string;
+    };
+
+    it('initialises every context from a single step', () => {
+      const task = new GitHubStatusReporter().createPendingTask(['ci/test', 'ci/build']);
+      expect(task.steps.map(s => s.name)).toEqual(['pending']);
+      expect(pendingScript(['ci/test', 'ci/build'])).toContain('let contexts = ["ci/test" "ci/build"]');
     });
 
-    it('replaces slashes with dashes in step names', () => {
-      const reporter = new GitHubStatusReporter();
-      const task = reporter.createPendingTask(['ci/lint/go']);
-      expect(task.steps[0].name).toBe('pending-ci-lint-go');
+    it('tries every context before failing once', () => {
+      const script = pendingScript(['ci/test']);
+      expect(script).toContain('if (post-status $"status-pending [($context)]" $body) { null } else { $context }');
+      expect(script).toContain('if ($failed | is-not-empty) {');
+      expect(script).toContain('exit 1');
+    });
+
+    it('escapes a context so it cannot end its string literal', () => {
+      expect(pendingScript(['say "hi"'])).toContain('let contexts = ["say \\"hi\\""]');
     });
 
     it('omits computeResources on pending steps when pendingTaskComputeResources is not set', () => {
@@ -60,15 +69,19 @@ describe('GitHubStatusReporter', () => {
   });
 
   describe('createStatusReconcilerTask()', () => {
-    it('creates one step per entry, named after the context', () => {
+    it('reconciles every entry from a single step', () => {
       const reporter = new GitHubStatusReporter();
       const task = reporter.createStatusReconcilerTask([
         { taskName: 'test', context: 'ci/test' },
         { taskName: 'build', context: 'ci/build' },
       ]);
-      expect(task.steps).toHaveLength(2);
-      expect(task.steps[0].name).toBe('resolve-ci-test');
-      expect(task.steps[1].name).toBe('resolve-ci-build');
+      expect(task.steps.map(s => s.name)).toEqual(['reconcile']);
+      const chart = new Chart(new App(), 'test');
+      task.synth(chart, 'ns', CAPABLE);
+      const script = (chart.toJson()[0] as any).spec.steps[0].script as string;
+      expect(script).toContain('{ status: "$(params.status-test)", context: "ci/test" }');
+      expect(script).toContain('{ status: "$(params.status-build)", context: "ci/build" }');
+      expect(script).toContain('if ($failed | is-not-empty) {');
     });
 
     it('defaults to the name "reconcile-status"', () => {
@@ -97,14 +110,14 @@ describe('GitHubStatusReporter', () => {
     it('acts only on the statuses that mean report-status never ran', () => {
       const script = scriptFor('deploy', 'ci/deploy');
       expect(script).toContain('$(params.status-deploy)');
-      expect(script).toContain('if $status not-in ["None" "Failed"]');
-      expect(script).toContain('exit 0');
+      expect(script).toContain('if $entry.status not-in ["None" "Failed"]');
+      expect(script).toContain('nothing to resolve');
     });
 
     it('reports a skipped task green and a failed or terminated one red', () => {
       const script = scriptFor('deploy', 'ci/deploy');
-      expect(script).toContain('let state = if $status == "None" { "success" } else { "failure" }');
-      expect(script).toContain('let desc = if $status == "None" { "Skipped" } else { "Failed or terminated" }');
+      expect(script).toContain('let state = if $entry.status == "None" { "success" } else { "failure" }');
+      expect(script).toContain('let desc = if $entry.status == "None" { "Skipped" } else { "Failed or terminated" }');
     });
 
     // Tekton substitutes $(tasks.*) in a PipelineTask's params, not in a referenced Task's

@@ -45,10 +45,10 @@ export interface GitHubStatusReporterOptions {
   /** Pipeline param supplying the commit SHA. Defaults to `new Param({ name: 'revision', type: 'string' })`. */
   revisionParam?: Param;
   /**
-   * CPU/memory limits for each step in the auto-generated `set-status-pending` task.
-   * Each step makes a single HTTP POST to the GitHub Commit Status API; the default
-   * step resources (512Mi limit) are far more than needed and can cause OOM on
-   * memory-constrained nodes when many tasks report status (one step per task).
+   * CPU/memory limits for the single step in the auto-generated `set-status-pending` and
+   * `reconcile-status` tasks. The step only makes HTTP POSTs to the GitHub Commit Status
+   * API, one per context in turn; the default step resources (512Mi limit) are far more
+   * than needed and can cause OOM on memory-constrained nodes.
    *
    * Recommended values for a homelab or constrained cluster:
    * `{ requests: { cpu: '25m', memory: '64Mi' }, limits: { cpu: '200m', memory: '128Mi' } }`
@@ -114,16 +114,18 @@ export class GitHubStatusReporter implements StatusReporter {
     return new Task({
       name,
       params: this.requiredParams,
-      steps: contexts.map(context => ({
-        name: `pending-${context.replace(/\//g, '-')}`,
+      // One step for every context: a container per context bought nothing but pod overhead,
+      // since the POSTs ran one after another either way.
+      steps: [{
+        name: 'pending',
         image: this.image,
         env,
-        script: this.pendingScript(context),
-        // See createSkipResolverTask: one failed POST must not stop the remaining contexts
-        // from being initialised.
+        script: this.pendingScript(contexts),
+        // The script already tries every context before failing; this keeps a failed POST
+        // from failing the TaskRun and, through runAfter, every task waiting on it.
         onError: 'continue' as const,
         ...(this.pendingComputeResources && { computeResources: this.pendingComputeResources }),
-      })),
+      }],
     });
   }
 
@@ -152,17 +154,15 @@ export class GitHubStatusReporter implements StatusReporter {
     return new Task({
       name,
       params: [...this.requiredParams, ...statusParams],
-      steps: entries.map(({ taskName, context }, i) => ({
-        name: `resolve-${context.replace(/\//g, '-')}`,
+      steps: [{
+        name: 'reconcile',
         image: this.image,
         env,
-        script: this.reconcileScript(statusParams[i], context),
-        // Tekton skips every remaining step in a pod once a step exits non-zero, so without
-        // this a single failed POST silently swallows all later contexts. The step still
-        // exits 1 on failure, so the failure stays visible in the TaskRun's step state.
+        script: this.reconcileScript(entries.map(({ context }, i) => ({ status: statusParams[i], context }))),
+        // See createPendingTask: the script reconciles every entry before it fails.
         onError: 'continue' as const,
         ...(this.pendingComputeResources && { computeResources: this.pendingComputeResources }),
-      })),
+      }],
     });
   }
 
@@ -181,25 +181,17 @@ export class GitHubStatusReporter implements StatusReporter {
   // hand-written here; the step label is supplied at each call site. The GitHub
   // Commit Status API calls use nushell `http post`, so the reporter's image
   // must provide nushell (see GitHubStatusReporterOptions.image).
-  private pendingScript(context: string): Script {
-    const repo = `$(params.${this.repoParam.name})`;
-    const rev = `$(params.${this.revParam.name})`;
-    return new Script(languageFor('nushell'), `let url = $"https://api.github.com/repos/${repo}/statuses/${rev}"
-let body = { state: "pending", context: "${context}", description: "Running" }
+  private pendingScript(contexts: string[]): Script {
+    return new Script(languageFor('nushell'), `${this.postStatusDef()}
 
-log $"status-pending [${context}]: POST ($url)"
-log $"status-pending [${context}]: body: ($body | to json -r)"
+let contexts = [${contexts.map(nuString).join(' ')}]
 
-try {
-  http post $url $body -t application/json -H [
-    Authorization $"token ($env.GITHUB_TOKEN)"
-    Accept "application/vnd.github+json"
-  ]
-  log "status-pending [${context}]: done"
-} catch { |e|
-  log $"status-pending [${context}]: error: ($e.msg)"
-  exit 1
-}`);
+let failed = $contexts | each { |context|
+  let body = { state: "pending", context: $context, description: "Running" }
+  if (post-status $"status-pending [($context)]" $body) { null } else { $context }
+} | compact
+
+${failIfAny('status-pending')}`);
   }
 
   // Runs in the pipeline's `finally` block, after the whole DAG has settled, and acts on the
@@ -217,35 +209,52 @@ try {
   // referenced Task's step script — written inline it stays a literal string, never equals
   // "None", and every step short-circuits without ever POSTing. `statusParam` carries the
   // real expression to the finally PipelineTask via `Param.pipelineExpression`.
-  private reconcileScript(status: Param, context: string): Script {
+  private reconcileScript(entries: { status: Param; context: string }[]): Script {
+    const rows = entries.map(({ status, context }) => `  { status: ${nuString(String(status))}, context: ${nuString(context)} }`);
+    return new Script(languageFor('nushell'), `${this.postStatusDef()}
+
+let entries = [
+${rows.join('\n')}
+]
+
+let failed = $entries | each { |entry|
+  let label = $"reconcile-status [($entry.context)]"
+  if $entry.status not-in ["None" "Failed"] {
+    log $"($label): task status is ($entry.status), nothing to resolve"
+    null
+  } else {
+    let state = if $entry.status == "None" { "success" } else { "failure" }
+    let desc = if $entry.status == "None" { "Skipped" } else { "Failed or terminated" }
+    log $"($label): task status is ($entry.status)"
+    let body = { state: $state, context: $entry.context, description: $desc }
+    if (post-status $label $body) { null } else { $entry.context }
+  }
+} | compact
+
+${failIfAny('reconcile-status')}`);
+  }
+
+  // POSTs one commit status and reports whether it landed, so a caller looping over contexts
+  // can carry on past a failure and fail once at the end.
+  private postStatusDef(): string {
     const repo = `$(params.${this.repoParam.name})`;
     const rev = `$(params.${this.revParam.name})`;
-    return new Script(languageFor('nushell'), `let status = "${status}"
-
-if $status not-in ["None" "Failed"] {
-  log $"reconcile-status [${context}]: task status is ($status), nothing to resolve"
-  exit 0
-}
-
-let state = if $status == "None" { "success" } else { "failure" }
-let desc = if $status == "None" { "Skipped" } else { "Failed or terminated" }
-
-let url = $"https://api.github.com/repos/${repo}/statuses/${rev}"
-let body = { state: $state, context: "${context}", description: $desc }
-
-log $"reconcile-status [${context}]: task status is ($status), POST ($url)"
-log $"reconcile-status [${context}]: body: ($body | to json -r)"
-
-try {
-  http post $url $body -t application/json -H [
-    Authorization $"token ($env.GITHUB_TOKEN)"
-    Accept "application/vnd.github+json"
-  ]
-  log "reconcile-status [${context}]: done"
-} catch { |e|
-  log $"reconcile-status [${context}]: error: ($e.msg)"
-  exit 1
-}`);
+    return `def post-status [label: string, body: record]: nothing -> bool {
+  let url = $"https://api.github.com/repos/${repo}/statuses/${rev}"
+  log $"($label): POST ($url)"
+  log $"($label): body: ($body | to json -r)"
+  try {
+    http post $url $body -t application/json -H [
+      Authorization $"token ($env.GITHUB_TOKEN)"
+      Accept "application/vnd.github+json"
+    ]
+    log $"($label): done"
+    true
+  } catch { |e|
+    log $"($label): error: ($e.msg)"
+    false
+  }
+}`;
   }
 
   private finalScript(context: string, userStepNames: string[]): Script {
@@ -295,4 +304,19 @@ try {
       valueFrom: { secretKeyRef: { name: this.tokenSecretName, key: 'token' } },
     };
   }
+}
+
+// A nushell double-quoted string literal. JSON's escapes (\" \\ \n \t) are valid there too,
+// so a context containing a quote cannot end the literal early.
+function nuString(value: string): string {
+  return JSON.stringify(value);
+}
+
+// Every context has been tried by the time this runs; exit non-zero once if any failed, so the
+// failure stays visible in the step's state.
+function failIfAny(label: string): string {
+  return `if ($failed | is-not-empty) {
+  log $"${label}: ($failed | length) failed: ($failed | str join ', ')"
+  exit 1
+}`;
 }
