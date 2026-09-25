@@ -95,6 +95,20 @@ export class GitHubStatusReporter implements StatusReporter {
     this.failOnError = opts.failOnError ?? true;
   }
 
+  // Everything createPendingTask and createStatusReconcilerTask read, and nothing else:
+  // failOnError only shapes finalStep, so a strict and a report-only reporter share one
+  // pending and one reconciler task. A new option that feeds either task belongs here.
+  pendingGroupKey(): string {
+    return JSON.stringify({
+      image: this.image,
+      tokenSecretName: this.tokenSecretName,
+      skipTokenInjection: this.skipTokenInjection,
+      repoParam: [this.repoParam.name, this.repoParam.type],
+      revParam: [this.revParam.name, this.revParam.type],
+      pendingComputeResources: this.pendingComputeResources ?? null,
+    });
+  }
+
   createPendingTask(contexts: string[], name = 'set-status-pending'): Task {
     const env = this.skipTokenInjection ? [] : [this.tokenEnv()];
     return new Task({

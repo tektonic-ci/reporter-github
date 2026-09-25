@@ -374,3 +374,36 @@ describe('consuming tektonic from outside the package', () => {
     expect(synthPipeline(pipeline).paramNames).not.toContain('status-deploy');
   });
 });
+
+describe('pendingGroupKey()', () => {
+  const key = (opts: ConstructorParameters<typeof GitHubStatusReporter>[0] = {}) =>
+    new GitHubStatusReporter(opts).pendingGroupKey();
+
+  it('ignores failOnError, which only shapes the final step', () => {
+    expect(key({ failOnError: false })).toBe(key());
+  });
+
+  it.each([
+    ['image', { image: 'ghcr.io/example/other:1' }],
+    ['tokenSecretName', { tokenSecretName: 'other-token' }],
+    ['skipTokenInjection', { skipTokenInjection: true }],
+    ['pendingTaskComputeResources', { pendingTaskComputeResources: { limits: { memory: '128Mi' } } }],
+  ] as const)('changes with %s', (_, opts) => {
+    expect(key(opts)).not.toBe(key());
+  });
+
+  it('merges a strict and a report-only reporter into one pending and one reconcile task', () => {
+    const strict = new GitHubStatusReporter();
+    const reportOnly = new GitHubStatusReporter({ failOnError: false });
+    const pipeline = new Pipeline({
+      name: 'ci',
+      tasks: [
+        new Task({ name: 'build', statusReporter: strict, steps: [{ name: 's', image: 'alpine' }] }),
+        new Task({ name: 'scan', statusReporter: reportOnly, steps: [{ name: 's', image: 'alpine' }] }),
+      ],
+    });
+    const view = synthPipeline(pipeline);
+    expect(view.taskNames.filter(n => n.startsWith('set-status-pending'))).toEqual(['set-status-pending-ci']);
+    expect(view.finallyNames).toEqual(['reconcile-status-ci']);
+  });
+});
