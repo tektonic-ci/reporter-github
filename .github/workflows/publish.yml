@@ -1,0 +1,66 @@
+name: publish
+
+# Releases are cut by pushing a vX.Y.Z tag. This workflow *stages* the package on npm
+# through trusted publishing (OIDC): no token is stored anywhere, and the staged version
+# only goes live once a maintainer approves it with 2FA (`npm stage approve`), so push
+# access to the repo alone cannot release.
+#
+# It lives here rather than in the Tekton self-CI pipeline because npm only accepts
+# GitHub Actions, GitLab CI/CD and CircleCI as OIDC issuers — a self-hosted cluster
+# cannot be a trusted publisher. Everything else (test, build) still runs in Tekton
+# on push and pull_request; see .tekton/.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Lets the job mint the OIDC token npm exchanges for a short-lived publish credential.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      # `npm stage` needs npm 11.19 or later. Pin a known npm rather than rely on whichever
+      # one the runner's Node bundles.
+      - name: Use an npm that supports staged publishing
+        run: npm install -g npm@^12.1.0
+
+      - run: npm ci
+
+      # The tag must name the version being published, or a mistagged release would
+      # quietly publish whatever happens to be in package.json.
+      - name: Check the tag matches the package version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match package version ${version}"
+            exit 1
+          fi
+
+      - run: npm test
+
+      - run: npm run build
+
+      # A version already on the registry cannot be staged again, so a re-run after
+      # approval is a no-op. Staged versions are not visible to `npm view` until approved,
+      # so a re-run before approval stages again; reject the extra stage.
+      - name: Stage
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          if npm view "${name}@${version}" version >/dev/null 2>&1; then
+            echo "${name}@${version} is already on the registry, skipping"
+            exit 0
+          fi
+          npm stage publish --access public --provenance
