@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { App, Chart } from 'cdk8s';
 import { GitHubStatusReporter, statusParam } from './github-status-reporter';
-import { EXIT_CODE_PATH, Pipeline, Task, Workspace } from '@pfenerty/tektonic';
-import { synthPipeline, synthTask } from '@pfenerty/tektonic/testing';
+import { EXIT_CODE_PATH, Pipeline, Task, Workspace } from '@tektonic-ci/core';
+import { synthPipeline, synthTask } from '@tektonic-ci/core/testing';
 
 // The reporter POSTs with nushell `http post`, so its steps resolve to a project image that
 // must declare `nushell` — tektonic's neutral fallback does not, by design.
@@ -337,7 +337,7 @@ describe('GitHubStatusReporter', () => {
 });
 
 describe('consuming tektonic from outside the package', () => {
-  // This suite exists because the reporter now lives outside @pfenerty/tektonic, and these
+  // This suite exists because the reporter now lives outside @tektonic-ci/core, and these
   // are the things that stopped being free when it did. Each one is reachable only through
   // the published surface; if an export is withdrawn, this file stops compiling.
 

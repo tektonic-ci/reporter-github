@@ -1,4 +1,4 @@
-# @pfenerty/tektonic-reporter-github
+# @tektonic-ci/reporter-github
 
 GitHub Commit Status reporter for [tektonic](https://github.com/tektonic-ci/core).
 
@@ -12,18 +12,18 @@ timed out.
 ## Install
 
 ```bash
-npm install @pfenerty/tektonic-reporter-github
+npm install @tektonic-ci/reporter-github
 ```
 
-`@pfenerty/tektonic` is a **peer** dependency, deliberately: a reporter is matched to its
+`@tektonic-ci/core` is a **peer** dependency, deliberately: a reporter is matched to its
 tasks by object identity, and two copies of the core package are two incompatible sets of
 classes. Your project pins the version; this package follows it.
 
 ## Use
 
 ```ts
-import { Task } from '@pfenerty/tektonic';
-import { GitHubStatusReporter } from '@pfenerty/tektonic-reporter-github';
+import { Task } from '@tektonic-ci/core';
+import { GitHubStatusReporter } from '@tektonic-ci/reporter-github';
 
 // Under PAC, reuse the git-auth token from the pod env rather than injecting a
 // github-token secret into every step.
@@ -51,7 +51,7 @@ capability if it does not declare one — pass `image` to override per reporter.
 ## Why it is a separate package
 
 Because nothing else proves the `StatusReporter` seam works. This package imports only
-`@pfenerty/tektonic`'s published surface — a build-time check enforces it — so anything a
+`@tektonic-ci/core`'s published surface — a build-time check enforces it — so anything a
 third-party reporter would need and cannot reach fails here first. See
 [docs/status-reporters.md](../../docs/status-reporters.md) to write your own.
 
