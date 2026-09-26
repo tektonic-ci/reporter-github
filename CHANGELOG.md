@@ -6,7 +6,7 @@ the entries below are the ones from core's changelog that concern it. From here 
 versions on its own, and releases only when it changes
 ([ADR 0002](https://github.com/tektonic-ci/core/blob/main/docs/adr/0002-npm-scope-and-versioning.md)).
 
-## Unreleased
+## 2.1.1
 
 ### Moved: the package has a repo of its own
 
