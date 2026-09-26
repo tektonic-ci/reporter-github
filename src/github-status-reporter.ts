@@ -6,8 +6,8 @@ import {
   injectedImageRef,
   languageFor,
   stepExitCodePath,
-} from '@pfenerty/tektonic';
-import type { StatusReporter, TaskStepSpec } from '@pfenerty/tektonic';
+} from '@tektonic-ci/core';
+import type { StatusReporter, TaskStepSpec } from '@tektonic-ci/core';
 
 /**
  * Param carrying a pipeline task's runtime status into the skip-resolver task.
