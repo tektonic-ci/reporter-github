@@ -50,11 +50,11 @@ capability if it does not declare one — pass `image` to override per reporter.
 
 ## Why it is a separate package
 
-Because nothing else proves the `StatusReporter` seam works. This package imports only
-`@tektonic-ci/core`'s published surface — a build-time check enforces it — so anything a
-third-party reporter would need and cannot reach fails here first. See
-[docs/status-reporters.md](../../docs/status-reporters.md) to write your own.
+Because nothing else proves the `StatusReporter` seam works. This repo builds and tests
+against `@tektonic-ci/core` as published on npm, exactly as a third-party reporter would, so
+anything such a reporter would need and cannot reach fails here first. See
+[docs/status-reporters.md](https://github.com/tektonic-ci/core/blob/main/docs/status-reporters.md) to write your own.
 
 ## License
 
-[Apache-2.0](../../LICENSE)
+[Apache-2.0](LICENSE)

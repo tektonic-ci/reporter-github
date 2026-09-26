@@ -1,0 +1,37 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "lockFileMaintenance": { "enabled": true },
+  "postUpgradeTasks": {
+    "description": [
+      ".tekton/ is synthesized from self-ci.ts, so an image or @tektonic-ci/core bump changes it. This re-synthesizes on the branch so the PR carries both sides; fileFilters commits nothing when the output is unchanged.",
+      "Needs the self-hosted Renovate's allowedCommands to admit '^npm ci' and '^npm run synth', or the tasks are skipped silently. check-manifests in self-CI stays the backstop."
+    ],
+    "commands": ["npm ci --ignore-scripts", "npm run synth"],
+    "fileFilters": [".tekton/**"],
+    "executionMode": "branch"
+  },
+  "customManagers": [
+    {
+      "description": "Image pins live in self-ci.ts; .tekton/ is generated from them.",
+      "customType": "regex",
+      "managerFilePatterns": ["self-ci.ts"],
+      "matchStrings": ["['\"](?<depName>ghcr\\.io/[^'\"\\s:]+):(?<currentValue>\\d[^'\"\\s]*)['\"]"],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Generated manifests are output, not source: the ansible manager would otherwise match .tekton/tasks/*.yaml.",
+      "matchManagers": ["ansible"],
+      "enabled": false
+    },
+    {
+      "description": "The peer range on core is a compatibility promise, widened deliberately in a release of its own (ADR 0002), not bumped by a bot.",
+      "matchPackageNames": ["@tektonic-ci/core"],
+      "matchDepTypes": ["peerDependencies"],
+      "enabled": false
+    },
+    { "matchPackageNames": ["vite", "vitest", "@vitest/**", "@vitejs/**"], "groupName": "vitest" }
+  ]
+}

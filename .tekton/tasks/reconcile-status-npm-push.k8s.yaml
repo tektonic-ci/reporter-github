@@ -1,0 +1,73 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: reporter-github-reconcile-status-npm-push
+  namespace: tektonic-ci
+spec:
+  params:
+    - name: repo-full-name
+      type: string
+    - name: revision
+      type: string
+    - name: status-test-npm
+      type: string
+  stepTemplate:
+    computeResources:
+      limits:
+        cpu: "1"
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+  steps:
+    - env: []
+      image: ghcr.io/pfenerty/apko-cicd/base:stable
+      name: reconcile
+      onError: continue
+      script: |-
+        #!/usr/bin/env nu
+        def log [msg: string] { print $"[(date now | format date '%H:%M:%S')] ($msg)" }
+        def post-status [label: string, body: record]: nothing -> bool {
+          let url = $"https://api.github.com/repos/$(params.repo-full-name)/statuses/$(params.revision)"
+          log $"($label): POST ($url)"
+          log $"($label): body: ($body | to json -r)"
+          try {
+            http post $url $body -t application/json -H [
+              Authorization $"token ($env.GITHUB_TOKEN)"
+              Accept "application/vnd.github+json"
+            ]
+            log $"($label): done"
+            true
+          } catch { |e|
+            log $"($label): error: ($e.msg)"
+            false
+          }
+        }
+
+        let entries = [
+          { status: "$(params.status-test-npm)", context: "test-npm" }
+        ]
+
+        let failed = $entries | each { |entry|
+          let label = $"reconcile-status [($entry.context)]"
+          if $entry.status not-in ["None" "Failed"] {
+            log $"($label): task status is ($entry.status), nothing to resolve"
+            null
+          } else {
+            let state = if $entry.status == "None" { "success" } else { "failure" }
+            let desc = if $entry.status == "None" { "Skipped" } else { "Failed or terminated" }
+            log $"($label): task status is ($entry.status)"
+            let body = { state: $state, context: $entry.context, description: $desc }
+            if (post-status $label $body) { null } else { $entry.context }
+          }
+        } | compact
+
+        if ($failed | is-not-empty) {
+          log $"reconcile-status: ($failed | length) failed: ($failed | str join ', ')"
+          exit 1
+        }

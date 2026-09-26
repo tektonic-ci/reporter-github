@@ -5,8 +5,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tektonic-ci/core.git",
-    "directory": "packages/tektonic-reporter-github"
+    "url": "https://github.com/tektonic-ci/reporter-github.git"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -29,8 +28,14 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
-    "build": "tsc -b",
-    "typecheck": "tsc -p tsconfig.test.json"
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "test": "npm run typecheck && vitest run",
+    "test:watch": "vitest",
+    "synth": "npm run build && tektonic synth self-ci.ts",
+    "check": "npm run build && tektonic check self-ci.ts",
+    "graph": "npm run build && tektonic graph self-ci.ts",
+    "clean": "rm -rf dist"
   },
   "peerDependencies": {
     "@tektonic-ci/core": "^2"
@@ -38,7 +43,10 @@
   "devDependencies": {
     "@tektonic-ci/core": "^2.1.0",
     "@types/node": "^26.0.0",
+    "cdk8s": "^2.68.0",
+    "constructs": "^10.3.0",
     "typescript": "~7.0.0",
+    "vite": "^8.3.0",
     "vitest": "^5.0.0"
   }
 }

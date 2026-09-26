@@ -1,0 +1,142 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  annotations:
+    pipelinesascode.tekton.dev/max-keep-runs: "5"
+    pipelinesascode.tekton.dev/on-event: "[pull_request]"
+    pipelinesascode.tekton.dev/on-target-branch: "[*]"
+    pipelinesascode.tekton.dev/task: "[.tekton/tasks/set-status-pending-npm-push.k8s.yaml, .tekton/tasks/git-clone.k8s.yaml, .tekton/tasks/test-npm.k8s.yaml, .tekton/tasks/reconcile-status-npm-push.k8s.yaml, .tekton/tasks/set-status-pending-npm-pull-request.k8s.yaml, .tekton/tasks/build-npm.k8s.yaml, .tekton/tasks/reconcile-status-npm-pull-request.k8s.yaml]"
+  name: reporter-github-npm-pull-request
+spec:
+  params:
+    - name: project-name
+      value: "{{ repo_name }}"
+    - name: repo-full-name
+      value: "{{ repo_owner }}/{{ repo_name }}"
+    - name: source-branch
+      value: "{{ source_branch }}"
+    - name: revision
+      value: "{{ revision }}"
+    - name: url
+      value: "{{ repo_url }}"
+  pipelineSpec:
+    finally:
+      - name: reconcile-status-npm-pull-request
+        params:
+          - name: repo-full-name
+            value: $(params.repo-full-name)
+          - name: revision
+            value: $(params.revision)
+          - name: status-test-npm
+            value: $(tasks.test-npm.status)
+          - name: status-build-npm
+            value: $(tasks.build-npm.status)
+        taskRef:
+          kind: Task
+          name: reporter-github-reconcile-status-npm-pull-request
+    params:
+      - description: Repository name, bound by PAC from repo_name
+        name: project-name
+        type: string
+      - description: Repository owner/name, bound by PAC from repo_owner and repo_name
+        name: repo-full-name
+        type: string
+      - description: Branch or tag ref of the event, bound by PAC from source_branch
+        name: source-branch
+        type: string
+      - name: revision
+        type: string
+      - description: Repository URL to clone from
+        name: url
+        type: string
+    tasks:
+      - name: set-status-pending-npm-pull-request
+        params:
+          - name: repo-full-name
+            value: $(params.repo-full-name)
+          - name: revision
+            value: $(params.revision)
+        runAfter:
+          - git-clone
+        taskRef:
+          kind: Task
+          name: reporter-github-set-status-pending-npm-pull-request
+      - name: git-clone
+        params:
+          - name: url
+            value: $(params.url)
+          - name: revision
+            value: $(params.revision)
+        taskRef:
+          kind: Task
+          name: reporter-github-git-clone
+        workspaces:
+          - name: workspace
+            workspace: workspace
+      - name: test-npm
+        params:
+          - name: repo-full-name
+            value: $(params.repo-full-name)
+          - name: revision
+            value: $(params.revision)
+        runAfter:
+          - set-status-pending-npm-pull-request
+        taskRef:
+          kind: Task
+          name: reporter-github-test-npm
+        workspaces:
+          - name: cache
+            workspace: cache
+          - name: workspace
+            workspace: workspace
+      - name: build-npm
+        params:
+          - name: repo-full-name
+            value: $(params.repo-full-name)
+          - name: revision
+            value: $(params.revision)
+        runAfter:
+          - test-npm
+          - set-status-pending-npm-pull-request
+        taskRef:
+          kind: Task
+          name: reporter-github-build-npm
+        workspaces:
+          - name: cache
+            workspace: cache
+          - name: workspace
+            workspace: workspace
+    workspaces:
+      - name: workspace
+      - name: cache
+  taskRunTemplate:
+    podTemplate:
+      env:
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: git-provider-token
+              name: "{{ git_auth_secret }}"
+        - name: HOME
+          value: /tekton/home
+      securityContext:
+        fsGroup: 1001
+        runAsGroup: 1001
+        runAsNonRoot: true
+        runAsUser: 1001
+        seccompProfile:
+          type: RuntimeDefault
+    serviceAccountName: tekton-triggers
+  workspaces:
+    - name: workspace
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
+          storageClassName: local-path
+    - name: cache
+      persistentVolumeClaim:
+        claimName: reporter-github-cache
