@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pfenerty/tektonic.git",
+    "url": "https://github.com/tektonic-ci/core.git",
     "directory": "packages/tektonic-reporter-github"
   },
   "main": "./dist/index.js",
