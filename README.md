@@ -1,6 +1,6 @@
 # @pfenerty/tektonic-reporter-github
 
-GitHub Commit Status reporter for [tektonic](https://github.com/pfenerty/tektonic).
+GitHub Commit Status reporter for [tektonic](https://github.com/tektonic-ci/core).
 
 Reports each task's outcome to the
 [GitHub Commit Status API](https://docs.github.com/en/rest/commits/statuses), so a
