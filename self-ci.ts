@@ -107,17 +107,47 @@ const npmBuild = new Task({
     ],
 });
 
+// Runs the tests, conformance kit included, against core's prerelease channel, so a core
+// change that breaks this reporter shows up before it reaches `latest`. Advisory: the
+// report-only reporter turns this task's commit status red but leaves the run green.
+const reportOnlyReporter = new GitHubStatusReporter({ skipTokenInjection: true, failOnError: false });
+
+const coreNextTest = new Task({
+    name: "test-core-next",
+    statusReporter: reportOnlyReporter,
+    steps: [
+        {
+            // Works on a copy with its own node_modules: installing core@next into the
+            // shared checkout would swap it under test-npm and build-npm running beside it,
+            // and would land in the npm cache, which is keyed on the lock file alone.
+            name: "test",
+            image: nodeImage,
+            workingDir: "$(workspaces.workspace.path)",
+            script: sh`
+                set -e
+                dir=$(mktemp -d)
+                tar --exclude=node_modules -cf - . | tar -xf - -C "$dir"
+                cd "$dir"
+                npm ci
+                npm install --no-save @tektonic-ci/core@next
+                npm ls @tektonic-ci/core
+                npm test
+            `,
+        },
+    ],
+});
+
 // ─── Pipelines ───────────────────────────────────────────────────────────────
 const pushPipeline = new GitPipeline({
     name: "npm-push",
     trigger: { rules: [{ on: TRIGGER_EVENTS.PUSH }] },
-    tasks: [npmTest],
+    tasks: [npmTest, coreNextTest],
 });
 
 const prPipeline = new GitPipeline({
     name: "npm-pull-request",
     trigger: { rules: [{ on: TRIGGER_EVENTS.PULL_REQUEST }] },
-    tasks: [npmTest, npmBuild],
+    tasks: [npmTest, npmBuild, coreNextTest],
 });
 
 // ─── Synthesize ──────────────────────────────────────────────────────────────

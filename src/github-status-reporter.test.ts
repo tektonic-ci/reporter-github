@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { App, Chart } from 'cdk8s';
 import { GitHubStatusReporter, statusParam } from './github-status-reporter';
-import { EXIT_CODE_PATH, Pipeline, Task, Workspace } from '@tektonic-ci/core';
-import { synthPipeline, synthTask } from '@tektonic-ci/core/testing';
+import { EXIT_CODE_PATH, Pipeline, Task, Workspace, type InjectedStepImage } from '@tektonic-ci/core';
+import { assertStatusReporterConformance, synthPipeline, synthTask } from '@tektonic-ci/core/testing';
 
 // The reporter POSTs with nushell `http post`, so its steps resolve to a project image that
 // must declare `nushell` — tektonic's neutral fallback does not, by design.
@@ -418,5 +418,19 @@ describe('pendingGroupKey()', () => {
     const view = synthPipeline(pipeline);
     expect(view.taskNames.filter(n => n.startsWith('set-status-pending'))).toEqual(['set-status-pending-ci']);
     expect(view.finallyNames).toEqual(['reconcile-status-ci']);
+  });
+});
+
+// Core's conformance kit drives the reporter through core's own synthesis. Run against the
+// core in the lockfile here, and against @tektonic-ci/core@next by self-CI's test-core-next.
+describe('StatusReporter conformance', () => {
+  const injectedStepImage: InjectedStepImage = { image: 'ghcr.io/example/ci-base:test', provides: ['sh', 'git', 'nushell'] };
+
+  it('holds for a strict reporter', () => {
+    assertStatusReporterConformance(() => new GitHubStatusReporter(), { injectedStepImage });
+  });
+
+  it('holds for a report-only reporter', () => {
+    assertStatusReporterConformance(() => new GitHubStatusReporter({ failOnError: false }), { injectedStepImage });
   });
 });

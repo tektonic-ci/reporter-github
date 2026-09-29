@@ -41,7 +41,7 @@
     "@tektonic-ci/core": "^2"
   },
   "devDependencies": {
-    "@tektonic-ci/core": "^2.1.0",
+    "@tektonic-ci/core": "^2.2.0",
     "@types/node": "^26.0.0",
     "cdk8s": "^2.68.0",
     "constructs": "^10.3.0",
