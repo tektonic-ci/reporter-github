@@ -6,6 +6,16 @@ the entries below are the ones from core's changelog that concern it. From here 
 versions on its own, and releases only when it changes
 ([ADR 0002](https://github.com/tektonic-ci/core/blob/main/docs/adr/0002-npm-scope-and-versioning.md)).
 
+## Unreleased
+
+### Tests: core's conformance kit, and a CI job against core's next release
+
+The test suite runs `assertStatusReporterConformance` from `@tektonic-ci/core/testing` on a
+strict and a report-only reporter. Self-CI adds an advisory `test-core-next` task that runs
+the same tests with `@tektonic-ci/core@next` installed over the locked core. Its commit status
+goes red on a break, but it doesn't fail the run. The dev dependency on core moves to
+`^2.2.0`, the first release with the kit. The peer range stays `^2`.
+
 ## 2.1.1
 
 ### Moved: the package has a repo of its own

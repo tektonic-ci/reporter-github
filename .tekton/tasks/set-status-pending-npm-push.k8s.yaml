@@ -47,7 +47,7 @@ spec:
           }
         }
 
-        let contexts = ["test-npm"]
+        let contexts = ["test-npm" "test-core-next"]
 
         let failed = $contexts | each { |context|
           let body = { state: "pending", context: $context, description: "Running" }

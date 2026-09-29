@@ -13,6 +13,8 @@ spec:
       type: string
     - name: status-build-npm
       type: string
+    - name: status-test-core-next
+      type: string
   stepTemplate:
     computeResources:
       limits:
@@ -54,6 +56,7 @@ spec:
         let entries = [
           { status: "$(params.status-test-npm)", context: "test-npm" }
           { status: "$(params.status-build-npm)", context: "build-npm" }
+          { status: "$(params.status-test-core-next)", context: "test-core-next" }
         ]
 
         let failed = $entries | each { |entry|

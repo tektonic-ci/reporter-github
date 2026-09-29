@@ -3,9 +3,8 @@ kind: PipelineRun
 metadata:
   annotations:
     pipelinesascode.tekton.dev/max-keep-runs: "5"
-    pipelinesascode.tekton.dev/on-event: "[push]"
-    pipelinesascode.tekton.dev/on-target-branch: "[*]"
-    pipelinesascode.tekton.dev/task: "[.tekton/tasks/set-status-pending-npm-push.k8s.yaml, .tekton/tasks/git-clone.k8s.yaml, .tekton/tasks/test-npm.k8s.yaml, .tekton/tasks/reconcile-status-npm-push.k8s.yaml, .tekton/tasks/set-status-pending-npm-pull-request.k8s.yaml, .tekton/tasks/build-npm.k8s.yaml, .tekton/tasks/reconcile-status-npm-pull-request.k8s.yaml]"
+    pipelinesascode.tekton.dev/on-cel-expression: (event == 'push' && !target_branch.startsWith('refs/tags/'))
+    pipelinesascode.tekton.dev/task: "[.tekton/tasks/set-status-pending-npm-push.k8s.yaml, .tekton/tasks/git-clone.k8s.yaml, .tekton/tasks/test-npm.k8s.yaml, .tekton/tasks/test-core-next.k8s.yaml, .tekton/tasks/reconcile-status-npm-push.k8s.yaml, .tekton/tasks/set-status-pending-npm-pull-request.k8s.yaml, .tekton/tasks/build-npm.k8s.yaml, .tekton/tasks/reconcile-status-npm-pull-request.k8s.yaml]"
   name: reporter-github-npm-push
 spec:
   params:
@@ -29,6 +28,8 @@ spec:
             value: $(params.revision)
           - name: status-test-npm
             value: $(tasks.test-npm.status)
+          - name: status-test-core-next
+            value: $(tasks.test-core-next.status)
         taskRef:
           kind: Task
           name: reporter-github-reconcile-status-npm-push
@@ -85,6 +86,20 @@ spec:
         workspaces:
           - name: cache
             workspace: cache
+          - name: workspace
+            workspace: workspace
+      - name: test-core-next
+        params:
+          - name: repo-full-name
+            value: $(params.repo-full-name)
+          - name: revision
+            value: $(params.revision)
+        runAfter:
+          - set-status-pending-npm-push
+        taskRef:
+          kind: Task
+          name: reporter-github-test-core-next
+        workspaces:
           - name: workspace
             workspace: workspace
     workspaces:

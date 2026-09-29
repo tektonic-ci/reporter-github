@@ -36,6 +36,9 @@ with `flox activate --`.
   (npm 11.19+, which the flox environment has).
 - Agent sessions can't write under `.github/workflows/`: hand such changes to a human as a
   patch.
+- `test-core-next` (advisory: report-only, red status but green run) re-runs `npm test` with
+  `@tektonic-ci/core@next` installed, in a copy of the checkout. A red one means an upcoming
+  core release breaks this package, so look at it before core ships, not after.
 - Record changes under `## Unreleased` in `CHANGELOG.md`.
 
 ## Issue tracking
