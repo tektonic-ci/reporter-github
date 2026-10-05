@@ -8,6 +8,21 @@ versions on its own, and releases only when it changes
 
 ## Unreleased
 
+### Added: Details links on commit statuses
+
+The new `detailsUrl` option sets GitHub's `target_url` on every status the reporter posts, so
+a check's Details link opens the run instead of leading nowhere. `tektonDashboardUrl(baseUrl)`
+builds the templates for a Tekton Dashboard. Any other console works through `{namespace}`,
+`{pipelineRun}` and `{taskRun}` placeholders. A task's own status links its TaskRun. Pending
+and reconciled statuses link the PipelineRun. With the option set, each reporting task gets a
+`pipeline-run-name` param bound from `$(context.pipelineRun.name)`. Without it, nothing changes.
+
+### Changed: failure descriptions name the failing step
+
+A failed task's status description goes from `Failed` to `Failed: step <name> exited <code>`,
+naming the first step with a non-zero exit code. When only the script's exit-code file
+records the failure, it reads `Failed: exit <code>`.
+
 ### Tests: core's conformance kit, and a CI job against core's next release
 
 The test suite runs `assertStatusReporterConformance` from `@tektonic-ci/core/testing` on a

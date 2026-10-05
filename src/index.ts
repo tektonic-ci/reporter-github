@@ -12,5 +12,5 @@
  * new Task({ name: 'test', statusReporter, steps: [...] });
  * ```
  */
-export { GitHubStatusReporter, statusParam } from "./github-status-reporter";
-export type { GitHubStatusReporterOptions } from "./github-status-reporter";
+export { GitHubStatusReporter, PIPELINE_RUN_PARAM, statusParam, tektonDashboardUrl } from "./github-status-reporter";
+export type { GitHubStatusReporterOptions, StatusDetailsUrl } from "./github-status-reporter";
