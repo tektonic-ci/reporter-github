@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { App, Chart } from 'cdk8s';
-import { GitHubStatusReporter, statusParam } from './github-status-reporter';
+import { GitHubStatusReporter, PIPELINE_RUN_PARAM, statusParam, tektonDashboardUrl } from './github-status-reporter';
 import { EXIT_CODE_PATH, Pipeline, Task, Workspace, type InjectedStepImage } from '@tektonic-ci/core';
 import { assertStatusReporterConformance, synthPipeline, synthTask } from '@tektonic-ci/core/testing';
 
@@ -302,12 +302,12 @@ describe('GitHubStatusReporter', () => {
     it('takes the worst of the contract file and the per-step codes', () => {
       const script = renderFinalFor(taskWith({ steps: [{ name: 'compile', image: 'alpine' }] }));
       expect(script).toContain(`open --raw ${EXIT_CODE_PATH}`);
-      expect(script).toContain('[$contract_code ...$step_codes] | math max');
+      expect(script).toContain('[$contract_code ...($step_codes | each { |s| $s.code })] | math max');
     });
 
     it('treats a missing per-step file as 0 so a step that never ran cannot fail the task', () => {
       const script = renderFinalFor(taskWith({ steps: [{ name: 'compile', image: 'alpine' }] }));
-      expect(script).toContain('try { open --raw $p | str trim | into int } catch { 0 }');
+      expect(script).toContain('try { open --raw $s.path | str trim | into int } catch { 0 }');
     });
 
     it('excludes the injected cache steps, so a failed cache save stays non-fatal', () => {
@@ -333,6 +333,93 @@ describe('GitHubStatusReporter', () => {
         expect(script).not.toContain(`step-${s.name}/exitCode`);
       }
     });
+  });
+});
+
+describe('failure descriptions', () => {
+  const finalScript = () => {
+    const t = new Task({
+      name: 'build',
+      statusReporter: new GitHubStatusReporter(),
+      statusContext: 'ci/build',
+      steps: [{ name: 'compile', image: 'alpine' }],
+    });
+    const chart = new Chart(new App(), 'test');
+    t.synth(chart, 'ns', CAPABLE);
+    return chart.toJson()[0].spec.steps.find((s: any) => s.name === 'report-status').script as string;
+  };
+
+  it('names the first failing step and its exit code', () => {
+    const script = finalScript();
+    expect(script).toContain('{ name: "compile", path: "/tekton/steps/step-compile/exitCode" }');
+    expect(script).toContain('let failed_steps = ($step_codes | where code != 0)');
+    expect(script).toContain('$"Failed: step ($first.name) exited ($first.code)"');
+  });
+
+  it('falls back to the exit code when only the contract file failed', () => {
+    expect(finalScript()).toContain('$"Failed: exit ($exit_code)"');
+  });
+});
+
+describe('detailsUrl', () => {
+  const DASHBOARD = tektonDashboardUrl('https://tekton.example/');
+  const render = (reporter: GitHubStatusReporter) => {
+    const t = new Task({ name: 'build', statusReporter: reporter, statusContext: 'ci/build', steps: [{ name: 's', image: 'alpine' }] });
+    const chart = new Chart(new App(), 'test');
+    t.synth(chart, 'ns', CAPABLE);
+    const final = chart.toJson()[0].spec.steps.find((s: any) => s.name === 'report-status').script as string;
+    const pc = new Chart(new App(), 'pending');
+    reporter.createPendingTask(['ci/build']).synth(pc, 'ns', CAPABLE);
+    const pending = (pc.toJson()[0] as any).spec.steps[0].script as string;
+    const rc = new Chart(new App(), 'reconcile');
+    reporter.createStatusReconcilerTask([{ taskName: 'build', context: 'ci/build' }]).synth(rc, 'ns', CAPABLE);
+    const reconcile = (rc.toJson()[0] as any).spec.steps[0].script as string;
+    return { final, pending, reconcile };
+  };
+
+  it('builds Tekton Dashboard templates, trimming a trailing slash', () => {
+    expect(DASHBOARD).toEqual({
+      pipelineRun: 'https://tekton.example/#/namespaces/{namespace}/pipelineruns/{pipelineRun}',
+      taskRun: 'https://tekton.example/#/namespaces/{namespace}/taskruns/{taskRun}',
+    });
+  });
+
+  it('sends no target_url and adds no param when unset', () => {
+    const reporter = new GitHubStatusReporter();
+    const { final, pending, reconcile } = render(reporter);
+    for (const script of [final, pending, reconcile]) expect(script).not.toContain('target_url');
+    expect(reporter.requiredParams.map(p => p.name)).not.toContain(PIPELINE_RUN_PARAM);
+  });
+
+  it('links the final status to the TaskRun', () => {
+    expect(render(new GitHubStatusReporter({ detailsUrl: DASHBOARD })).final).toContain(
+      '| merge { target_url: "https://tekton.example/#/namespaces/$(context.taskRun.namespace)/taskruns/$(context.taskRun.name)" }',
+    );
+  });
+
+  it('links pending and reconciled statuses to the PipelineRun', () => {
+    const { pending, reconcile } = render(new GitHubStatusReporter({ detailsUrl: DASHBOARD }));
+    const merge = '| merge { target_url: "https://tekton.example/#/namespaces/$(context.taskRun.namespace)/pipelineruns/$(params.pipeline-run-name)" }';
+    expect(pending).toContain(merge);
+    expect(reconcile).toContain(merge);
+  });
+
+  it('falls back to the pipelineRun template for the final status', () => {
+    const { final } = render(new GitHubStatusReporter({ detailsUrl: { pipelineRun: 'https://ci.example/{pipelineRun}' } }));
+    expect(final).toContain('target_url: "https://ci.example/$(params.pipeline-run-name)"');
+  });
+
+  it('binds the PipelineRun name per task rather than as a pipeline param', () => {
+    const reporter = new GitHubStatusReporter({ detailsUrl: DASHBOARD });
+    const view = synthPipeline(new Pipeline({
+      name: 'ci',
+      tasks: [new Task({ name: 'build', statusReporter: reporter, steps: [{ name: 's', image: 'alpine' }] })],
+    }));
+    const spec = (view as any).spec;
+    expect((spec.params ?? []).map((p: any) => p.name)).not.toContain(PIPELINE_RUN_PARAM);
+    for (const pt of [...spec.tasks, ...(spec.finally ?? [])]) {
+      expect(pt.params).toContainEqual({ name: PIPELINE_RUN_PARAM, value: '$(context.pipelineRun.name)' });
+    }
   });
 });
 
@@ -396,11 +483,17 @@ describe('pendingGroupKey()', () => {
     expect(key({ failOnError: false })).toBe(key());
   });
 
+  it('ignores the taskRun template, which only shapes the final step', () => {
+    const pipelineRun = 'https://ci.example/{pipelineRun}';
+    expect(key({ detailsUrl: { pipelineRun, taskRun: 'https://ci.example/{taskRun}' } })).toBe(key({ detailsUrl: { pipelineRun } }));
+  });
+
   it.each([
     ['image', { image: 'ghcr.io/example/other:1' }],
     ['tokenSecretName', { tokenSecretName: 'other-token' }],
     ['skipTokenInjection', { skipTokenInjection: true }],
     ['pendingTaskComputeResources', { pendingTaskComputeResources: { limits: { memory: '128Mi' } } }],
+    ['detailsUrl', { detailsUrl: { pipelineRun: 'https://ci.example/{pipelineRun}' } }],
   ] as const)('changes with %s', (_, opts) => {
     expect(key(opts)).not.toBe(key());
   });
@@ -432,5 +525,12 @@ describe('StatusReporter conformance', () => {
 
   it('holds for a report-only reporter', () => {
     assertStatusReporterConformance(() => new GitHubStatusReporter({ failOnError: false }), { injectedStepImage });
+  });
+
+  it('holds for a reporter with details links', () => {
+    assertStatusReporterConformance(
+      () => new GitHubStatusReporter({ detailsUrl: tektonDashboardUrl('https://tekton.example') }),
+      { injectedStepImage },
+    );
   });
 });

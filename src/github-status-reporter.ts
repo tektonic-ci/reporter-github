@@ -25,6 +25,38 @@ export function statusParam(taskName: string): Param {
   });
 }
 
+/**
+ * Where a commit status's Details link points. Each value is a URL template; the reporter
+ * fills in these placeholders at run time:
+ *
+ * - `{namespace}`   — the namespace the run is in
+ * - `{pipelineRun}` — the PipelineRun's name
+ * - `{taskRun}`     — the reporting task's TaskRun name (`taskRun` template only)
+ *
+ * `pipelineRun` links the statuses posted before a task runs (`pending`) and by the
+ * `finally` reconciler (skipped or killed tasks, which may have no TaskRun to show).
+ * `taskRun` links the status a task reports for itself, and defaults to `pipelineRun`.
+ */
+export interface StatusDetailsUrl {
+  pipelineRun: string;
+  taskRun?: string;
+}
+
+/**
+ * {@link StatusDetailsUrl} templates for the [Tekton Dashboard](https://github.com/tektoncd/dashboard)
+ * served at `baseUrl` — the same console Pipelines as Code's `tekton-dashboard-url` names.
+ */
+export function tektonDashboardUrl(baseUrl: string): StatusDetailsUrl {
+  const base = baseUrl.replace(/\/+$/, '');
+  return {
+    pipelineRun: `${base}/#/namespaces/{namespace}/pipelineruns/{pipelineRun}`,
+    taskRun: `${base}/#/namespaces/{namespace}/taskruns/{taskRun}`,
+  };
+}
+
+/** The param carrying the PipelineRun's name into every reporting task when {@link GitHubStatusReporterOptions.detailsUrl} is set. */
+export const PIPELINE_RUN_PARAM = 'pipeline-run-name';
+
 /** Options for constructing a {@link GitHubStatusReporter}. */
 export interface GitHubStatusReporterOptions {
   /**
@@ -65,6 +97,13 @@ export interface GitHubStatusReporterOptions {
    * but the TaskRun still reports Succeeded.
    */
   failOnError?: boolean;
+  /**
+   * Gives every commit status a Details link (GitHub's `target_url`). Without it the
+   * statuses carry no link at all. Use {@link tektonDashboardUrl} for a Tekton Dashboard,
+   * or pass templates for any other console. Setting it adds a `pipeline-run-name` param,
+   * bound from `$(context.pipelineRun.name)`, to every task using this reporter.
+   */
+  detailsUrl?: StatusDetailsUrl;
 }
 
 /**
@@ -81,6 +120,7 @@ export class GitHubStatusReporter implements StatusReporter {
   private readonly revParam: Param;
   private readonly pendingComputeResources: GitHubStatusReporterOptions['pendingTaskComputeResources'];
   private readonly failOnError: boolean;
+  private readonly detailsUrl?: StatusDetailsUrl;
 
   readonly requiredParams: Param[];
 
@@ -90,7 +130,15 @@ export class GitHubStatusReporter implements StatusReporter {
     this.skipTokenInjection = opts.skipTokenInjection ?? false;
     this.repoParam = opts.repoFullNameParam ?? new Param({ name: 'repo-full-name', type: 'string' });
     this.revParam = opts.revisionParam ?? new Param({ name: 'revision', type: 'string' });
+    this.detailsUrl = opts.detailsUrl;
     this.requiredParams = [this.repoParam, this.revParam];
+    if (this.detailsUrl) {
+      this.requiredParams.push(new Param({
+        name: PIPELINE_RUN_PARAM,
+        type: 'string',
+        pipelineExpression: '$(context.pipelineRun.name)',
+      }));
+    }
     this.pendingComputeResources = opts.pendingTaskComputeResources;
     this.failOnError = opts.failOnError ?? true;
   }
@@ -106,6 +154,8 @@ export class GitHubStatusReporter implements StatusReporter {
       repoParam: [this.repoParam.name, this.repoParam.type],
       revParam: [this.revParam.name, this.revParam.type],
       pendingComputeResources: this.pendingComputeResources ?? null,
+      // Only the pipelineRun template reaches those two tasks; taskRun shapes finalStep alone.
+      detailsUrl: this.detailsUrl?.pipelineRun ?? null,
     });
   }
 
@@ -187,7 +237,7 @@ export class GitHubStatusReporter implements StatusReporter {
 let contexts = [${contexts.map(nuString).join(' ')}]
 
 let failed = $contexts | each { |context|
-  let body = { state: "pending", context: $context, description: "Running" }
+  let body = ${this.withTargetUrl('{ state: "pending", context: $context, description: "Running" }', 'pipelineRun')}
   if (post-status $"status-pending [($context)]" $body) { null } else { $context }
 } | compact
 
@@ -226,7 +276,7 @@ let failed = $entries | each { |entry|
     let state = if $entry.status == "None" { "success" } else { "failure" }
     let desc = if $entry.status == "None" { "Skipped" } else { "Failed or terminated" }
     log $"($label): task status is ($entry.status)"
-    let body = { state: $state, context: $entry.context, description: $desc }
+    let body = ${this.withTargetUrl('{ state: $state, context: $entry.context, description: $desc }', 'pipelineRun')}
     if (post-status $label $body) { null } else { $entry.context }
   }
 } | compact
@@ -271,18 +321,27 @@ ${failIfAny('reconcile-status')}`);
     // that had a task reporting green on real drift). Reading both means a Tekton that
     // does not write the per-step files degrades to the old behaviour rather than
     // reporting a blanket success.
-    const stepPaths = userStepNames.map((n) => `"${stepExitCodePath(n)}"`).join(' ');
+    const steps = userStepNames.map((n) => `{ name: ${nuString(n)}, path: "${stepExitCodePath(n)}" }`).join(' ');
     return new Script(languageFor('nushell'), `let contract_code = (try { open --raw ${EXIT_CODE_PATH} | str trim | into int } catch { 1 })
 # A step that never ran has no file; 0 keeps it out of the max.
-let step_codes = ([${stepPaths}] | each { |p| try { open --raw $p | str trim | into int } catch { 0 } })
-let exit_code = ([$contract_code ...$step_codes] | math max)
+let step_codes = ([${steps}] | each { |s| { name: $s.name, code: (try { open --raw $s.path | str trim | into int } catch { 0 }) } })
+let exit_code = ([$contract_code ...($step_codes | each { |s| $s.code })] | math max)
 let state = if $exit_code == 0 { "success" } else { "failure" }
-let desc = if $exit_code == 0 { "Passed" } else { "Failed" }
+# Name the first step that failed, so the check says where without opening the logs.
+let failed_steps = ($step_codes | where code != 0)
+let desc = if $exit_code == 0 {
+  "Passed"
+} else if ($failed_steps | is-empty) {
+  $"Failed: exit ($exit_code)"
+} else {
+  let first = ($failed_steps | first)
+  $"Failed: step ($first.name) exited ($first.code)"
+}
 
 log $"report-status [${context}]: exit-code=($exit_code) state=($state)"
 
 let url = $"https://api.github.com/repos/${repo}/statuses/${rev}"
-let body = { state: $state, context: "${context}", description: $desc }
+let body = ${this.withTargetUrl(`{ state: $state, context: "${context}", description: $desc }`, 'taskRun')}
 
 log $"report-status [${context}]: POST ($url)"
 log $"report-status [${context}]: body: ($body | to json -r)"
@@ -296,6 +355,19 @@ try {
 } catch { |e|
   log $"report-status [${context}]: error: ($e.msg)"
 }${failLine}`);
+  }
+
+  // The nushell status body `record`, with `target_url` merged in when a detailsUrl is
+  // configured. The pending and reconcile tasks link the PipelineRun: the
+  // TaskRun substituted there would be their own, not the task the status is about.
+  private withTargetUrl(record: string, kind: 'pipelineRun' | 'taskRun'): string {
+    if (!this.detailsUrl) return record;
+    const template = kind === 'taskRun' ? this.detailsUrl.taskRun ?? this.detailsUrl.pipelineRun : this.detailsUrl.pipelineRun;
+    const url = template
+      .split('{namespace}').join('$(context.taskRun.namespace)')
+      .split('{pipelineRun}').join(`$(params.${PIPELINE_RUN_PARAM})`)
+      .split('{taskRun}').join('$(context.taskRun.name)');
+    return `(${record} | merge { target_url: ${nuString(url)} })`;
   }
 
   private tokenEnv() {
