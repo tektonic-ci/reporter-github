@@ -27,6 +27,8 @@ spec:
             value: $(params.repo-full-name)
           - name: revision
             value: $(params.revision)
+          - name: pipeline-run-name
+            value: $(context.pipelineRun.name)
           - name: status-test-npm
             value: $(tasks.test-npm.status)
           - name: status-build-npm
@@ -58,6 +60,8 @@ spec:
             value: $(params.repo-full-name)
           - name: revision
             value: $(params.revision)
+          - name: pipeline-run-name
+            value: $(context.pipelineRun.name)
         runAfter:
           - git-clone
         taskRef:
@@ -81,6 +85,8 @@ spec:
             value: $(params.repo-full-name)
           - name: revision
             value: $(params.revision)
+          - name: pipeline-run-name
+            value: $(context.pipelineRun.name)
         runAfter:
           - set-status-pending-npm-pull-request
         taskRef:
@@ -97,6 +103,8 @@ spec:
             value: $(params.repo-full-name)
           - name: revision
             value: $(params.revision)
+          - name: pipeline-run-name
+            value: $(context.pipelineRun.name)
         runAfter:
           - test-npm
           - set-status-pending-npm-pull-request
@@ -114,6 +122,8 @@ spec:
             value: $(params.repo-full-name)
           - name: revision
             value: $(params.revision)
+          - name: pipeline-run-name
+            value: $(context.pipelineRun.name)
         runAfter:
           - set-status-pending-npm-pull-request
         taskRef:
