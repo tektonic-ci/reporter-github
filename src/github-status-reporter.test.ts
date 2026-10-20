@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { App, Chart } from 'cdk8s';
-import { GitHubStatusReporter, PIPELINE_RUN_PARAM, statusParam, tektonDashboardUrl } from './github-status-reporter';
+import { GitHubStatusReporter, PIPELINE_RUN_PARAM, STARTED_AT_PATH, statusParam, tektonDashboardUrl } from './github-status-reporter';
 import { EXIT_CODE_PATH, Pipeline, Task, Workspace, type InjectedStepImage } from '@tektonic-ci/core';
 import { assertStatusReporterConformance, synthPipeline, synthTask } from '@tektonic-ci/core/testing';
 
@@ -324,7 +324,7 @@ describe('GitHubStatusReporter', () => {
       // would also pass if the steps were named something else entirely. The save step is
       // the pointed case: it carries onError:continue so a failed cache write is non-fatal,
       // which is exactly the verdict consulting its exit code would silently overturn.
-      const cacheSteps = steps.filter((s) => s.name !== 'compile' && s.name !== 'report-status');
+      const cacheSteps = steps.filter((s) => s.name.endsWith('-npm-cache'));
       expect(cacheSteps.map((s) => s.name)).toEqual(['restore-npm-cache', 'save-npm-cache']);
       expect(cacheSteps.find((s) => s.name === 'save-npm-cache')!.onError).toBe('continue');
 
@@ -332,6 +332,8 @@ describe('GitHubStatusReporter', () => {
       for (const s of cacheSteps) {
         expect(script).not.toContain(`step-${s.name}/exitCode`);
       }
+      // Nor the start step, which core prepends (from the startStep hook on) outside the contract.
+      expect(script).not.toContain('step-report-running/exitCode');
     });
   });
 });
@@ -358,6 +360,76 @@ describe('failure descriptions', () => {
 
   it('falls back to the exit code when only the contract file failed', () => {
     expect(finalScript()).toContain('$"Failed: exit ($exit_code)"');
+  });
+});
+
+// Queued -> Running -> result: the pending task posts Queued, the start step (prepended by core
+// when the task's pod starts) posts Running, and the final step reports the result with how
+// long the task took.
+describe('Queued, Running, then the result', () => {
+  const renderScript = (task: Task) => {
+    const chart = new Chart(new App(), 'test');
+    task.synth(chart, 'ns', CAPABLE);
+    return (chart.toJson()[0] as any).spec.steps as { name: string; script: string }[];
+  };
+  // Rendered as a plain step, so this holds whichever core is installed.
+  const startScript = (reporter = new GitHubStatusReporter()) =>
+    renderScript(new Task({ name: 'build', steps: [reporter.startStep('ci/build')] }))[0].script;
+  const finalScript = () =>
+    renderScript(new Task({
+      name: 'build',
+      statusReporter: new GitHubStatusReporter(),
+      statusContext: 'ci/build',
+      steps: [{ name: 'compile', image: 'alpine' }],
+    })).find((s) => s.name === 'report-status')!.script;
+
+  it('posts Queued from the pending task', () => {
+    const chart = new Chart(new App(), 'test');
+    new GitHubStatusReporter().createPendingTask(['ci/build']).synth(chart, 'ns', CAPABLE);
+    expect((chart.toJson()[0] as any).spec.steps[0].script).toContain('description: "Queued"');
+  });
+
+  it('posts Running from the start step', () => {
+    expect(startScript()).toContain('{ state: "pending", context: "ci/build", description: "Running" }');
+  });
+
+  it('records the start time before posting, so a failed POST keeps the duration', () => {
+    const script = startScript();
+    const save = script.indexOf(`save -f ${STARTED_AT_PATH}`);
+    expect(save).toBeGreaterThan(-1);
+    expect(save).toBeLessThan(script.indexOf('post-status "report-running [ci/build]"'));
+  });
+
+  it('never exits non-zero from the start step', () => {
+    const script = startScript();
+    expect(script).not.toMatch(/\bexit\b/);
+    expect(script).toContain('post-status "report-running [ci/build]" $body | ignore');
+  });
+
+  it('names the start step apart from the final step', () => {
+    const reporter = new GitHubStatusReporter();
+    expect(reporter.startStep('ci/build').name).toBe('report-running');
+    expect(reporter.startStep('ci/build').name).not.toBe(reporter.finalStep('ci/build').name);
+  });
+
+  it('links the Running status to the TaskRun', () => {
+    expect(startScript(new GitHubStatusReporter({ detailsUrl: tektonDashboardUrl('https://tekton.example') }))).toContain(
+      '| merge { target_url: "https://tekton.example/#/namespaces/$(context.taskRun.namespace)/taskruns/$(context.taskRun.name)" }',
+    );
+  });
+
+  it('honours skipTokenInjection on the start step', () => {
+    expect((new GitHubStatusReporter({ skipTokenInjection: true }).startStep('ci/build') as any).env).toHaveLength(0);
+    expect((new GitHubStatusReporter().startStep('ci/build') as any).env).toHaveLength(1);
+  });
+
+  it('appends the duration to the result, and leaves it off without a start time', () => {
+    const script = finalScript();
+    expect(script).toContain(`open --raw ${STARTED_AT_PATH}`);
+    expect(script).toContain('let duration = (try {');
+    expect(script).toContain('} catch { null })');
+    expect(script).toContain('$"Passed in ($duration)"');
+    expect(script).toContain('$"($result) \\(($duration)\\)"');
   });
 });
 

@@ -54,6 +54,13 @@ export function tektonDashboardUrl(baseUrl: string): StatusDetailsUrl {
   };
 }
 
+/**
+ * Where {@link GitHubStatusReporter.startStep} records the epoch second its task started, for
+ * the final status to report a duration. Under `/tekton/home`, which every step of a TaskRun
+ * shares, like core's `EXIT_CODE_PATH`.
+ */
+export const STARTED_AT_PATH = '/tekton/home/.status-started-at';
+
 /** The param carrying the PipelineRun's name into every reporting task when {@link GitHubStatusReporterOptions.detailsUrl} is set. */
 export const PIPELINE_RUN_PARAM = 'pipeline-run-name';
 
@@ -216,6 +223,19 @@ export class GitHubStatusReporter implements StatusReporter {
     });
   }
 
+  // Core prepends this to the task and forces onError: continue, so a failed POST never
+  // fails the task. Without core support (before the startStep hook) it is never called, and
+  // a context goes straight from Queued to its result.
+  startStep(context: string): TaskStepSpec {
+    const env = this.skipTokenInjection ? [] : [this.tokenEnv()];
+    return {
+      name: 'report-running',
+      image: this.image,
+      env,
+      script: this.startScript(context),
+    };
+  }
+
   finalStep(context: string, userStepNames: string[] = []): TaskStepSpec {
     const env = this.skipTokenInjection ? [] : [this.tokenEnv()];
     return {
@@ -237,11 +257,22 @@ export class GitHubStatusReporter implements StatusReporter {
 let contexts = [${contexts.map(nuString).join(' ')}]
 
 let failed = $contexts | each { |context|
-  let body = ${this.withTargetUrl('{ state: "pending", context: $context, description: "Running" }', 'pipelineRun')}
+  let body = ${this.withTargetUrl('{ state: "pending", context: $context, description: "Queued" }', 'pipelineRun')}
   if (post-status $"status-pending [($context)]" $body) { null } else { $context }
 } | compact
 
 ${failIfAny('status-pending')}`);
+  }
+
+  // Records the start time before the POST, so a failed POST still leaves the final status
+  // its duration.
+  private startScript(context: string): Script {
+    return new Script(languageFor('nushell'), `${this.postStatusDef()}
+
+try { date now | format date '%s' | save -f ${STARTED_AT_PATH} } catch { |e| log $"report-running: cannot record start time: ($e.msg)" }
+
+let body = ${this.withTargetUrl(`{ state: "pending", context: ${nuString(context)}, description: "Running" }`, 'taskRun')}
+post-status ${nuString(`report-running [${context}]`)} $body | ignore`);
   }
 
   // Runs in the pipeline's `finally` block, after the whole DAG has settled, and acts on the
@@ -322,20 +353,31 @@ ${failIfAny('reconcile-status')}`);
     // does not write the per-step files degrades to the old behaviour rather than
     // reporting a blanket success.
     const steps = userStepNames.map((n) => `{ name: ${nuString(n)}, path: "${stepExitCodePath(n)}" }`).join(' ');
-    return new Script(languageFor('nushell'), `let contract_code = (try { open --raw ${EXIT_CODE_PATH} | str trim | into int } catch { 1 })
+    return new Script(languageFor('nushell'), `${FORMAT_DURATION_DEF}
+
+let contract_code = (try { open --raw ${EXIT_CODE_PATH} | str trim | into int } catch { 1 })
 # A step that never ran has no file; 0 keeps it out of the max.
 let step_codes = ([${steps}] | each { |s| { name: $s.name, code: (try { open --raw $s.path | str trim | into int } catch { 0 }) } })
 let exit_code = ([$contract_code ...($step_codes | each { |s| $s.code })] | math max)
 let state = if $exit_code == 0 { "success" } else { "failure" }
 # Name the first step that failed, so the check says where without opening the logs.
 let failed_steps = ($step_codes | where code != 0)
-let desc = if $exit_code == 0 {
+let result = if $exit_code == 0 {
   "Passed"
 } else if ($failed_steps | is-empty) {
   $"Failed: exit ($exit_code)"
 } else {
   let first = ($failed_steps | first)
   $"Failed: step ($first.name) exited ($first.code)"
+}
+# Only a start step records the start time; without one the description carries no duration.
+let duration = (try { format-duration ((date now | format date '%s' | into int) - (open --raw ${STARTED_AT_PATH} | str trim | into int)) } catch { null })
+let desc = if $duration == null {
+  $result
+} else if $exit_code == 0 {
+  $"Passed in ($duration)"
+} else {
+  $"($result) \\(($duration)\\)"
 }
 
 log $"report-status [${context}]: exit-code=($exit_code) state=($state)"
@@ -383,6 +425,22 @@ try {
 function nuString(value: string): string {
   return JSON.stringify(value);
 }
+
+// 45s, 3m12s, 1h05m: GitHub truncates long descriptions, so seconds drop once a run passes an hour.
+const FORMAT_DURATION_DEF = `def format-duration [secs: int]: nothing -> string {
+  let secs = ([$secs 0] | math max)
+  let h = $secs // 3600
+  let m = ($secs mod 3600) // 60
+  let s = $secs mod 60
+  let pad = { |n| $n | into string | fill -a right -w 2 -c '0' }
+  if $h > 0 {
+    $"($h)h(do $pad $m)m"
+  } else if $m > 0 {
+    $"($m)m(do $pad $s)s"
+  } else {
+    $"($s)s"
+  }
+}`;
 
 // Every context has been tried by the time this runs; exit non-zero once if any failed, so the
 // failure stays visible in the step's state.

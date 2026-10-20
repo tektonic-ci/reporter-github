@@ -4,10 +4,13 @@ GitHub Commit Status reporter for [tektonic](https://github.com/tektonic-ci/core
 
 Reports each task's outcome to the
 [GitHub Commit Status API](https://docs.github.com/en/rest/commits/statuses), so a
-PipelineRun shows up as per-task checks on the commit: every context is set to `pending`
-before the DAG starts, each task reports its own result as it finishes, and a `finally`
+PipelineRun shows up as per-task checks on the commit. Every context reads `Queued` before
+the DAG starts, then `Running` once its task's pod starts, then the task's result. A `finally`
 task reconciles anything left pending because its task was skipped, OOMKilled, evicted or
 timed out.
+
+`Running` needs a core with the `StatusReporter.startStep` hook (2.4.0 or later).
+Under older cores a context goes straight from `Queued` to its result.
 
 ## Install
 
@@ -37,7 +40,9 @@ reporter needs `repo-full-name` and `revision` params, which it merges into ever
 uses it; `TektonicProject` binds both from PAC.
 
 A failed task's status names the step that failed and its exit code (`Failed: step test
-exited 1`), so the check says where it broke before you open any logs.
+exited 1`), so the check says where it broke before you open any logs. With `Running`
+reported, the result also says how long the task took: `Passed in 3m12s`, `Failed: step test
+exited 1 (2m05s)`.
 
 ### Details links
 
@@ -53,7 +58,7 @@ const statusReporter = new GitHubStatusReporter({
 });
 ```
 
-A task's own status links its TaskRun. Pending statuses and the ones the `finally` reconciler
+A task's own statuses (`Running` and its result) link its TaskRun. `Queued` statuses and the ones the `finally` reconciler
 posts (skipped or killed tasks, which may have no TaskRun) link the PipelineRun. For another
 console, pass the templates yourself, using `{namespace}`, `{pipelineRun}` and `{taskRun}`:
 

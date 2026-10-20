@@ -129,7 +129,19 @@ const coreNextTest = new Task({
                 tar --exclude=node_modules -cf - . | tar -xf - -C "$dir"
                 cd "$dir"
                 npm ci
-                npm install --no-save @tektonic-ci/core@next
+                # Core moves "next" only on a prerelease, so after a stable release it trails
+                # "latest" and would test an older core than the lock file. Take the newer.
+                next=$(npm view @tektonic-ci/core@next version)
+                latest=$(npm view @tektonic-ci/core@latest version)
+                core=$(node -e '
+                    const key = (v) => { const [rel, pre] = v.split("-"); return [...rel.split(".").map(Number), pre === undefined ? 1 : 0]; };
+                    const [a, b] = process.argv.slice(1);
+                    const [ka, kb] = [key(a), key(b)];
+                    const i = ka.findIndex((x, j) => x !== kb[j]);
+                    console.log(i === -1 || ka[i] > kb[i] ? a : b);
+                ' "$next" "$latest")
+                echo "core@next is $next, core@latest is $latest: testing $core"
+                npm install --no-save "@tektonic-ci/core@$core"
                 npm ls @tektonic-ci/core
                 npm test
             `,
