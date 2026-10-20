@@ -6,7 +6,7 @@ the entries below are the ones from core's changelog that concern it. From here 
 versions on its own, and releases only when it changes
 ([ADR 0002](https://github.com/tektonic-ci/core/blob/main/docs/adr/0002-npm-scope-and-versioning.md)).
 
-## Unreleased
+## 2.3.0
 
 ### Added: Queued, then Running, then the result with its duration
 
@@ -19,6 +19,8 @@ starts (linked to the TaskRun when `detailsUrl` is set) and records its start ti
 a failed POST never fails the task. Under a core without the hook (before 2.4.0) nothing
 calls it, and a context goes from `Queued` straight to its result, without a duration.
 Re-synthesize and commit. (reporter-github-ldr)
+
+## 2.2.0
 
 ### Added: Details links on commit statuses
 
