@@ -12,15 +12,18 @@ import {
     Workspace,
     sh,
 } from "@tektonic-ci/core";
-import { GitHubStatusReporter } from "./dist/index.js";
+import { GitHubStatusReporter, tektonDashboardUrl } from "./dist/index.js";
 
 // ─── Images ──────────────────────────────────────────────────────────────────
 const nodeImage = "ghcr.io/pfenerty/apko-cicd/nodejs:24";
 
 // ─── Status reporter ─────────────────────────────────────────────────────────
 // Under PAC, reuse the git-auth token via the pod env (see podTemplateEnv below)
-// instead of injecting a separate github-token secret per step.
-const statusReporter = new GitHubStatusReporter({ skipTokenInjection: true });
+// instead of injecting a separate github-token secret per step. Each commit status links
+// to its TaskRun (pending and reconciled ones to the PipelineRun) on the tailnet-only
+// Tekton Dashboard that homelab runs.
+const detailsUrl = tektonDashboardUrl("https://tekton-dashboard.bear-velociraptor.ts.net");
+const statusReporter = new GitHubStatusReporter({ skipTokenInjection: true, detailsUrl });
 
 // ─── Cache workspace ────────────────────────────────────────────────────────
 // CI runs on the homelab Talos cluster, beside core's. The claim this workspace binds
@@ -110,7 +113,7 @@ const npmBuild = new Task({
 // Runs the tests, conformance kit included, against core's prerelease channel, so a core
 // change that breaks this reporter shows up before it reaches `latest`. Advisory: the
 // report-only reporter turns this task's commit status red but leaves the run green.
-const reportOnlyReporter = new GitHubStatusReporter({ skipTokenInjection: true, failOnError: false });
+const reportOnlyReporter = new GitHubStatusReporter({ skipTokenInjection: true, failOnError: false, detailsUrl });
 
 const coreNextTest = new Task({
     name: "test-core-next",
