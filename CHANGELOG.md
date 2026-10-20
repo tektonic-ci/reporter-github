@@ -8,6 +8,18 @@ versions on its own, and releases only when it changes
 
 ## Unreleased
 
+### Added: Queued, then Running, then the result with its duration
+
+A context used to read `pending / Running` from the moment the PipelineRun started, however
+long its task waited on `runAfter` or for a node. The pending task now posts `Queued`. The
+reporter implements core's optional `startStep` hook, so each task posts `Running` when its pod
+starts (linked to the TaskRun when `detailsUrl` is set) and records its start time under
+`/tekton/home`. The final status then carries the duration: `Passed in 3m12s`,
+`Failed: step test exited 1 (2m05s)`. Core renders the start step with `onError: continue`, so
+a failed POST never fails the task. Under a core without the hook (2.3.0 and earlier) nothing
+calls it, and a context goes from `Queued` straight to its result, without a duration.
+Re-synthesize and commit. (reporter-github-ldr)
+
 ### Added: Details links on commit statuses
 
 The new `detailsUrl` option sets GitHub's `target_url` on every status the reporter posts, so
