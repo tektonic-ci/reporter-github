@@ -16,7 +16,7 @@ reporter implements core's optional `startStep` hook, so each task posts `Runnin
 starts (linked to the TaskRun when `detailsUrl` is set) and records its start time under
 `/tekton/home`. The final status then carries the duration: `Passed in 3m12s`,
 `Failed: step test exited 1 (2m05s)`. Core renders the start step with `onError: continue`, so
-a failed POST never fails the task. Under a core without the hook (2.3.0 and earlier) nothing
+a failed POST never fails the task. Under a core without the hook (before 2.4.0) nothing
 calls it, and a context goes from `Queued` straight to its result, without a duration.
 Re-synthesize and commit. (reporter-github-ldr)
 
