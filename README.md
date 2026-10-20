@@ -9,7 +9,7 @@ the DAG starts, then `Running` once its task's pod starts, then the task's resul
 task reconciles anything left pending because its task was skipped, OOMKilled, evicted or
 timed out.
 
-`Running` needs a core with the `StatusReporter.startStep` hook (the release after 2.3.0).
+`Running` needs a core with the `StatusReporter.startStep` hook (2.4.0 or later).
 Under older cores a context goes straight from `Queued` to its result.
 
 ## Install
