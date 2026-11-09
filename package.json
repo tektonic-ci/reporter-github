@@ -1,7 +1,7 @@
 {
   "name": "@tektonic-ci/reporter-github",
   "version": "2.3.0",
-  "description": "GitHub Commit Status reporter for tektonic",
+  "description": "GitHub commit status and check run reporters for tektonic",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

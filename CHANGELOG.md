@@ -6,6 +6,20 @@ the entries below are the ones from core's changelog that concern it. From here 
 versions on its own, and releases only when it changes
 ([ADR 0002](https://github.com/tektonic-ci/core/blob/main/docs/adr/0002-npm-scope-and-versioning.md)).
 
+## Unreleased
+
+### Added: `GitHubChecksReporter`, check runs with the failed step's output
+
+A commit status holds a state, 140 characters and a link, so finding out why a task failed
+meant opening a console. `GitHubChecksReporter` posts a check run per task instead:
+`queued` from the pending task, `in_progress` from the start step, then completed with a
+table of the steps and their exit codes, the tail of the failed step's output and, with
+`annotations`, file/line annotations parsed from it. The reconciler concludes skipped tasks
+as `skipped` and killed ones as `failure`, leaving runs the task completed itself alone. It
+needs `@tektonic-ci/core` 2.5.0 (pending-task results, step-output capture) and a GitHub App
+token such as PAC's `{{ git_auth_secret }}`. The failed step's output is posted as printed,
+so a step must not print secrets. `GitHubStatusReporter` is unchanged. (reporter-github-br7)
+
 ## 2.3.0
 
 ### Added: Queued, then Running, then the result with its duration

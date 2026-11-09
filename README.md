@@ -1,6 +1,8 @@
 # @tektonic-ci/reporter-github
 
-GitHub Commit Status reporter for [tektonic](https://github.com/tektonic-ci/core).
+GitHub reporters for [tektonic](https://github.com/tektonic-ci/core): `GitHubStatusReporter`
+posts commit statuses, and `GitHubChecksReporter` posts check runs that carry the failed
+step's output ([below](#check-runs)).
 
 Reports each task's outcome to the
 [GitHub Commit Status API](https://docs.github.com/en/rest/commits/statuses), so a
@@ -82,12 +84,65 @@ The status steps POST with nushell's `http post`, so they need an image providin
 They resolve through the project's `injectedStepImage` and synthesis fails naming the
 capability if it does not declare one — pass `image` to override per reporter.
 
+## Check runs
+
+`GitHubChecksReporter` reports each task as a check run through the
+[Checks API](https://docs.github.com/en/rest/checks/runs) instead of a commit status, so a
+failure can be read on GitHub without opening a console:
+
+- the pending task creates a `queued` run per context and hands each task its run's ID;
+- the task's start step moves it to `in_progress`;
+- the final step completes it with a table of the task's steps and their exit codes, the
+  tail of the failed step's output, and optionally annotations parsed from that output;
+- the `finally` reconciler concludes the runs of skipped tasks as `skipped` and of tasks
+  killed before they could report (OOMKill, eviction, timeout) as `failure`. A run the task
+  already completed is left alone.
+
+```ts
+import { FILE_LINE_ANNOTATION_PATTERN, GitHubChecksReporter, tektonDashboardUrl } from '@tektonic-ci/reporter-github';
+
+const statusReporter = new GitHubChecksReporter({
+  skipTokenInjection: true, // PAC's {{ git_auth_secret }} through podTemplateEnv
+  detailsUrl: tektonDashboardUrl('https://tekton.example.com'),
+  annotations: { pattern: FILE_LINE_ANNOTATION_PATTERN, pathPrefix: '/workspace/source' },
+});
+```
+
+It needs `@tektonic-ci/core` 2.5.0 or later and throws on construction under an older core.
+
+**Token.** GitHub only lets a GitHub App write check runs: a personal access token gets a
+403. Under Pipelines as Code, use its installation token (`{{ git_auth_secret }}`, through
+`TektonicProjectOptions.podTemplateEnv`) with `skipTokenInjection: true`. Runs created with
+that token belong to the PAC App's check suite.
+
+**The output is posted as printed.** Core captures each step's output for the final step
+(`captureStepOutput`), and the failed step's tail goes into the check run, which anyone who
+can see the repository's checks can read — on a public repository, anyone. A step must not
+print secrets. `logTailBytes` sets how much is posted (default 32 KiB, at most 60 000, under
+GitHub's 65 535-character limit).
+
+**Annotations.** `annotations.pattern` is matched against each line of the failed step's
+output with nushell's `parse --regex` (Rust regex syntax) and needs the named groups `file`,
+`line` and `message`. `FILE_LINE_ANNOTATION_PATTERN` matches `file:line: message` and
+`file:line:col: message`. Paths must be relative to the repository root for GitHub to place
+them, so `pathPrefix` (the checkout directory) is stripped. GitHub keeps the first 50.
+
+**Limits.** The pending task passes each run's ID as a Tekton result, and all of a pod's
+results share its 4 KiB termination message: about 50 contexts per pipeline.
+`apiUrl` points it at GitHub Enterprise Server.
+
 ## Exports
 
 | Export | What it is |
 |---|---|
-| `GitHubStatusReporter` | The `StatusReporter` implementation |
-| `GitHubStatusReporterOptions` | Constructor options |
+| `GitHubStatusReporter` | The commit status reporter |
+| `GitHubStatusReporterOptions` | Its constructor options |
+| `GitHubChecksReporter` | The check run reporter |
+| `GitHubChecksReporterOptions`, `CheckRunAnnotations` | Its constructor options |
+| `FILE_LINE_ANNOTATION_PATTERN` | An annotation pattern for `file:line[:col]: message` |
+| `checkRunResultName(context)` | The pending-task result carrying a context's check run ID |
+| `CHECK_RUN_ID_PARAM`, `CHECK_RUN_ID_PATH` | Where a reporting task receives and keeps its run's ID |
+| `DEFAULT_LOG_TAIL_BYTES`, `MAX_LOG_TAIL_BYTES` | `logTailBytes` default and ceiling |
 | `statusParam(taskName)` | The `$(tasks.<name>.status)` param its reconciler task binds |
 | `tektonDashboardUrl(baseUrl)` | `detailsUrl` templates for a Tekton Dashboard |
 | `StatusDetailsUrl` | The `detailsUrl` option's type |

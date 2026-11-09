@@ -420,9 +420,9 @@ try {
   }
 }
 
-// A nushell double-quoted string literal. JSON's escapes (\" \\ \n \t) are valid there too,
+// @internal A nushell double-quoted string literal. JSON's escapes (\" \\ \n \t) are valid there too,
 // so a context containing a quote cannot end the literal early.
-function nuString(value: string): string {
+export function nuString(value: string): string {
   return JSON.stringify(value);
 }
 
