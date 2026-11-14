@@ -8,6 +8,8 @@ versions on its own, and releases only when it changes
 
 ## Unreleased
 
+## 2.5.0
+
 ### Added: `tokenSecretKey`, for PAC's per-run token on the reporter's steps alone
 
 Both reporters take `tokenSecretKey` (default `"token"`), the key in `tokenSecretName` that holds
