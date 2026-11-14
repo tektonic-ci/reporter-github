@@ -8,6 +8,16 @@ versions on its own, and releases only when it changes
 
 ## Unreleased
 
+### Added: `tokenSecretKey`, for PAC's per-run token on the reporter's steps alone
+
+Both reporters take `tokenSecretKey` (default `"token"`), the key in `tokenSecretName` that holds
+the token. `tokenSecretName: '{{ git_auth_secret }}', tokenSecretKey: 'git-provider-token'`
+gives the reporter's steps, and no others, Pipelines as Code's per-run App token, which
+`GitHubChecksReporter` needs. PAC substitutes the placeholder in task files too. The README
+previously recommended a pod-wide `GITHUB_TOKEN` in `podTemplateEnv`. That route hands the token
+to every step, and since Tekton gives pod-template env precedence over step env, it replaces any
+`GITHUB_TOKEN` a step sets itself. (reporter-github-xio)
+
 ## 2.4.0
 
 ### Added: `GitHubChecksReporter`, check runs that carry the failing step's output

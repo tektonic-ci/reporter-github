@@ -72,8 +72,18 @@ export interface GitHubStatusReporterOptions {
    * Defaults to the project's `injectedStepImage`, which must then declare `nushell`.
    */
   image?: string;
-  /** Name of the Kubernetes Secret containing the GitHub token (key: `"token"`). Defaults to `"github-token"`. */
+  /** Name of the Kubernetes Secret containing the GitHub token. Defaults to `"github-token"`. */
   tokenSecretName?: string;
+  /**
+   * Key in {@link tokenSecretName} holding the token. Defaults to `"token"`.
+   *
+   * Under Pipelines as Code, `tokenSecretName: '{{ git_auth_secret }}'` with
+   * `tokenSecretKey: 'git-provider-token'` hands PAC's per-run token to the reporter's steps
+   * only: PAC substitutes the placeholder in the task files it applies. Prefer it to a pod-wide
+   * `GITHUB_TOKEN` in `podTemplateEnv`, which reaches every step and, because Tekton gives pod
+   * template env precedence over step env, replaces any `GITHUB_TOKEN` a step sets itself.
+   */
+  tokenSecretKey?: string;
   /**
    * When true, skip per-step GITHUB_TOKEN injection via secretKeyRef.
    * Use when GITHUB_TOKEN is already provided at the PipelineRun podTemplate level
@@ -123,6 +133,7 @@ export interface GitHubStatusReporterOptions {
 export class GitHubStatusReporter implements StatusReporter {
   private readonly image: string;
   private readonly tokenSecretName: string;
+  private readonly tokenSecretKey: string;
   private readonly skipTokenInjection: boolean;
   private readonly repoParam: Param;
   private readonly revParam: Param;
@@ -135,6 +146,7 @@ export class GitHubStatusReporter implements StatusReporter {
   constructor(opts: GitHubStatusReporterOptions = {}) {
     this.image = opts.image ?? injectedImageRef('nushell');
     this.tokenSecretName = opts.tokenSecretName ?? 'github-token';
+    this.tokenSecretKey = opts.tokenSecretKey ?? 'token';
     this.skipTokenInjection = opts.skipTokenInjection ?? false;
     this.repoParam = opts.repoFullNameParam ?? new Param({ name: 'repo-full-name', type: 'string' });
     this.revParam = opts.revisionParam ?? new Param({ name: 'revision', type: 'string' });
@@ -158,6 +170,7 @@ export class GitHubStatusReporter implements StatusReporter {
     return JSON.stringify({
       image: this.image,
       tokenSecretName: this.tokenSecretName,
+      tokenSecretKey: this.tokenSecretKey,
       skipTokenInjection: this.skipTokenInjection,
       repoParam: [this.repoParam.name, this.repoParam.type],
       revParam: [this.revParam.name, this.revParam.type],
@@ -412,7 +425,7 @@ try {
   private tokenEnv() {
     return {
       name: 'GITHUB_TOKEN',
-      valueFrom: { secretKeyRef: { name: this.tokenSecretName, key: 'token' } },
+      valueFrom: { secretKeyRef: { name: this.tokenSecretName, key: this.tokenSecretKey } },
     };
   }
 }

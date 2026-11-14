@@ -178,6 +178,15 @@ describe('GitHubChecksReporter', () => {
       expect(env(new GitHubChecksReporter({ tokenSecretName: 'app-token' }))[0].valueFrom.secretKeyRef).toEqual({ name: 'app-token', key: 'token' });
       expect(env(new GitHubChecksReporter({ skipTokenInjection: true }))).toEqual([]);
     });
+
+    it('reads PAC\'s per-run token on the reporter steps alone with tokenSecretKey', () => {
+      const r = new GitHubChecksReporter({ tokenSecretName: '{{ git_auth_secret }}', tokenSecretKey: 'git-provider-token' });
+      const ref = { name: '{{ git_auth_secret }}', key: 'git-provider-token' };
+      expect((r.finalStep('ci/x').env as AnyObj[])[0].valueFrom.secretKeyRef).toEqual(ref);
+      expect((r.startStep('ci/x').env as AnyObj[])[0].valueFrom.secretKeyRef).toEqual(ref);
+      expect((r.createPendingTask(['ci/x']).steps[0].env as AnyObj[])[0].valueFrom.secretKeyRef).toEqual(ref);
+      expect(r.pendingGroupKey()).not.toBe(new GitHubChecksReporter({ tokenSecretName: '{{ git_auth_secret }}' }).pendingGroupKey());
+    });
   });
 
   describe('grouping', () => {
