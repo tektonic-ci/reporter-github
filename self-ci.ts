@@ -155,7 +155,7 @@ const coreNextTest = new Task({
 // ─── Pipelines ───────────────────────────────────────────────────────────────
 const pushPipeline = new GitPipeline({
     name: "npm-push",
-    trigger: { rules: [{ on: TRIGGER_EVENTS.PUSH }] },
+    trigger: { rules: [{ on: TRIGGER_EVENTS.PUSH, branch: "main" }] },
     tasks: [npmTest, coreNextTest],
 });
 
