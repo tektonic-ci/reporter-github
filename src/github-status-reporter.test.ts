@@ -547,6 +547,20 @@ describe('consuming tektonic from outside the package', () => {
   });
 });
 
+describe('tokenSecretKey', () => {
+  it('defaults to the "token" key and can name another', () => {
+    const ref = (r: GitHubStatusReporter) => (r.finalStep('ci/x').env as any[])[0].valueFrom.secretKeyRef;
+    expect(ref(new GitHubStatusReporter())).toEqual({ name: 'github-token', key: 'token' });
+    expect(ref(new GitHubStatusReporter({ tokenSecretName: '{{ git_auth_secret }}', tokenSecretKey: 'git-provider-token' })))
+      .toEqual({ name: '{{ git_auth_secret }}', key: 'git-provider-token' });
+  });
+
+  it('puts the key in the group key, since the pending task reads it', () => {
+    expect(new GitHubStatusReporter({ tokenSecretKey: 'other' }).pendingGroupKey())
+      .not.toBe(new GitHubStatusReporter().pendingGroupKey());
+  });
+});
+
 describe('pendingGroupKey()', () => {
   const key = (opts: ConstructorParameters<typeof GitHubStatusReporter>[0] = {}) =>
     new GitHubStatusReporter(opts).pendingGroupKey();

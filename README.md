@@ -97,35 +97,38 @@ status holds a state, a 140-character description and a link. A check run can ca
 - a `skipped` conclusion for tasks Tekton skipped, instead of a green status.
 
 ```ts
-import { TektonicProject } from '@tektonic-ci/core';
 import { GitHubChecksReporter, tektonDashboardUrl } from '@tektonic-ci/reporter-github';
 
+// PAC's per-run GitHub App token, on the reporter's steps only. PAC substitutes
+// {{ git_auth_secret }} in the task files before it applies them.
 const statusReporter = new GitHubChecksReporter({
-  skipTokenInjection: true,
+  tokenSecretName: '{{ git_auth_secret }}',
+  tokenSecretKey: 'git-provider-token',
   detailsUrl: tektonDashboardUrl('https://tekton.example.com'),
-});
-
-new TektonicProject({
-  // ...
-  // The Checks API takes only a GitHub App installation token, so pass PAC's per-run App
-  // token to every step. PAC substitutes {{ git_auth_secret }} before submitting the run.
-  podTemplateEnv: [{
-    name: 'GITHUB_TOKEN',
-    valueFrom: { secretKeyRef: { name: '{{ git_auth_secret }}', key: 'git-provider-token' } },
-  }],
 });
 ```
 
 **The token must be a GitHub App installation token.** A personal access token gets
 `403 Resource not accessible`. Under Pipelines as Code, use PAC's App token as shown above. The
 runs then belong to the PAC App's check suite. Outside PAC, put an App installation token in a
-Secret and pass `tokenSecretName`.
+Secret and pass `tokenSecretName` (and `tokenSecretKey` if its key is not `token`).
+
+**Avoid a pod-wide `GITHUB_TOKEN`.** Passing the token through `TektonicProject`'s
+`podTemplateEnv` with `skipTokenInjection: true` also works, but it reaches every step,
+including the code under test, for the token's lifetime (an hour). Tekton also gives pod
+template env [precedence over step env](https://github.com/tektoncd/pipeline/blob/main/docs/podtemplates.md),
+so it silently replaces any `GITHUB_TOKEN` a step sets for itself, such as a PAT used for SARIF
+upload.
+
+**Long pipelines.** The App token expires an hour after the PipelineRun starts. Calls made after
+that fail, and the run is left as it was: a task finishing after the hour leaves its check
+`in_progress`.
 
 **Step output is posted as printed, secrets included.** Anyone who can see the repository's
 checks can read it, which for a public repository means anyone. Pass `output: false` for a task
 that may print credentials. Annotations come from that output, so they go away with it.
 
-Options it shares with `GitHubStatusReporter` (`image`, `tokenSecretName`,
+Options it shares with `GitHubStatusReporter` (`image`, `tokenSecretName`, `tokenSecretKey`,
 `skipTokenInjection`, `repoFullNameParam`, `revisionParam`, `pendingTaskComputeResources`,
 `failOnError`, `detailsUrl`) mean the same here. On top of those:
 

@@ -51,12 +51,13 @@ const MAX_ANNOTATIONS = 50;
 export interface GitHubChecksReporterOptions
   extends Omit<GitHubStatusReporterOptions, 'tokenSecretName' | 'skipTokenInjection' | 'detailsUrl'> {
   /**
-   * Name of a Kubernetes Secret holding the GitHub token under `"token"`. Defaults to
-   * `"github-token"`.
+   * Name of the Kubernetes Secret holding the GitHub token (under {@link tokenSecretKey}).
+   * Defaults to `"github-token"`.
    *
    * The Checks API accepts only a **GitHub App installation token**: a personal access token
-   * gets 403. Under Pipelines as Code, use PAC's per-run App token instead: set
-   * `skipTokenInjection` and pass it through `podTemplateEnv`, as the README shows.
+   * gets 403. Under Pipelines as Code, use PAC's per-run App token with
+   * `tokenSecretName: '{{ git_auth_secret }}'` and `tokenSecretKey: 'git-provider-token'`, as
+   * the README shows.
    */
   tokenSecretName?: string;
   /** Skip per-step `GITHUB_TOKEN` injection; the token is provided at the PipelineRun level. */
@@ -104,6 +105,7 @@ export function checkRunResultName(context: string): string {
 export class GitHubChecksReporter implements StatusReporter {
   private readonly image: string;
   private readonly tokenSecretName: string;
+  private readonly tokenSecretKey: string;
   private readonly skipTokenInjection: boolean;
   private readonly repoParam: Param;
   private readonly revParam: Param;
@@ -118,6 +120,7 @@ export class GitHubChecksReporter implements StatusReporter {
   constructor(opts: GitHubChecksReporterOptions = {}) {
     this.image = opts.image ?? injectedImageRef('nushell');
     this.tokenSecretName = opts.tokenSecretName ?? 'github-token';
+    this.tokenSecretKey = opts.tokenSecretKey ?? 'token';
     this.skipTokenInjection = opts.skipTokenInjection ?? false;
     this.repoParam = opts.repoFullNameParam ?? new Param({ name: 'repo-full-name', type: 'string' });
     this.revParam = opts.revisionParam ?? new Param({ name: 'revision', type: 'string' });
@@ -150,6 +153,7 @@ export class GitHubChecksReporter implements StatusReporter {
     return JSON.stringify({
       image: this.image,
       tokenSecretName: this.tokenSecretName,
+      tokenSecretKey: this.tokenSecretKey,
       skipTokenInjection: this.skipTokenInjection,
       repoParam: [this.repoParam.name, this.repoParam.type],
       revParam: [this.revParam.name, this.revParam.type],
@@ -223,7 +227,7 @@ export class GitHubChecksReporter implements StatusReporter {
   private env() {
     return this.skipTokenInjection
       ? []
-      : [{ name: 'GITHUB_TOKEN', valueFrom: { secretKeyRef: { name: this.tokenSecretName, key: 'token' } } }];
+      : [{ name: 'GITHUB_TOKEN', valueFrom: { secretKeyRef: { name: this.tokenSecretName, key: this.tokenSecretKey } } }];
   }
 
   private pendingScript(contexts: string[]): Script {
