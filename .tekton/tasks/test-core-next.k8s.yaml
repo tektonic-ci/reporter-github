@@ -26,7 +26,10 @@ spec:
           - ALL
     workingDir: $(workspaces.workspace.path)
   steps:
-    - env: []
+    - computeResources:
+        requests:
+          cpu: 10m
+      env: []
       image: ghcr.io/pfenerty/apko-cicd/base:stable
       name: report-running
       onError: continue
@@ -91,7 +94,10 @@ spec:
         printf '%s' "$__tek_prev" > /tekton/home/.exit-code
         exit "$__tek_rc"
       workingDir: $(workspaces.workspace.path)
-    - env: []
+    - computeResources:
+        requests:
+          cpu: 10m
+      env: []
       image: ghcr.io/pfenerty/apko-cicd/base:stable
       name: report-status
       script: |-

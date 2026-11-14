@@ -26,7 +26,10 @@ spec:
           - ALL
     workingDir: $(workspaces.workspace.path)
   steps:
-    - env: []
+    - computeResources:
+        requests:
+          cpu: 10m
+      env: []
       image: ghcr.io/pfenerty/apko-cicd/base:stable
       name: report-running
       onError: continue
@@ -54,7 +57,10 @@ spec:
 
         let body = ({ state: "pending", context: "test-npm", description: "Running" } | merge { target_url: "https://tekton-dashboard.bear-velociraptor.ts.net/#/namespaces/$(context.taskRun.namespace)/taskruns/$(context.taskRun.name)" })
         post-status "report-running [test-npm]" $body | ignore
-    - image: ghcr.io/pfenerty/apko-cicd/base:stable
+    - computeResources:
+        requests:
+          cpu: 10m
+      image: ghcr.io/pfenerty/apko-cicd/base:stable
       name: restore-npm-cache
       script: |-
         #!/usr/bin/env nu
@@ -80,9 +86,12 @@ spec:
           try {
             ^zstd -d -T1 -c $archive | ^tar xf - -C $stage -o --no-same-permissions
           } catch { |e|
+            try { ^chmod -R u+w $stage } catch { }
             rm -rf $stage
             log $"restore-npm-cache: extract failed \(($e.msg)\)"
-            exit 1
+            rm -f $archive
+            log $"restore-npm-cache: removed unextractable archive, treating as a miss ($hash)"
+            exit 0
           }
           for p in ["node_modules"] {
             let staged = ($stage | path join $p)
@@ -174,7 +183,10 @@ spec:
         printf '%s' "$__tek_prev" > /tekton/home/.exit-code
         exit "$__tek_rc"
       workingDir: $(workspaces.workspace.path)
-    - image: ghcr.io/pfenerty/apko-cicd/base:stable
+    - computeResources:
+        requests:
+          cpu: 10m
+      image: ghcr.io/pfenerty/apko-cicd/base:stable
       name: save-npm-cache
       onError: continue
       script: |-
@@ -220,7 +232,10 @@ spec:
         let ratio = ($uncompressed / ($compressed | into int) | math round --precision 1)
         log $"save-npm-cache: saved ($compressed) ratio=($ratio)x in ($elapsed)s"
       workingDir: $(workspaces.workspace.path)
-    - env: []
+    - computeResources:
+        requests:
+          cpu: 10m
+      env: []
       image: ghcr.io/pfenerty/apko-cicd/base:stable
       name: report-status
       script: |-
