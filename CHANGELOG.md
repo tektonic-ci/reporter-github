@@ -8,6 +8,8 @@ versions on its own, and releases only when it changes
 
 ## Unreleased
 
+## 2.4.0
+
 ### Added: `GitHubChecksReporter`, check runs that carry the failing step's output
 
 A commit status holds a state, 140 characters and a link, so finding out why a task failed
