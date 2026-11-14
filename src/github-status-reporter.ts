@@ -8,6 +8,7 @@ import {
   stepExitCodePath,
 } from '@tektonic-ci/core';
 import type { StatusReporter, TaskStepSpec } from '@tektonic-ci/core';
+import { FORMAT_DURATION_DEF, detailsUrlExpr, failIfAny, nuString } from './nushell';
 
 /**
  * Param carrying a pipeline task's runtime status into the skip-resolver task.
@@ -404,11 +405,7 @@ try {
   // TaskRun substituted there would be their own, not the task the status is about.
   private withTargetUrl(record: string, kind: 'pipelineRun' | 'taskRun'): string {
     if (!this.detailsUrl) return record;
-    const template = kind === 'taskRun' ? this.detailsUrl.taskRun ?? this.detailsUrl.pipelineRun : this.detailsUrl.pipelineRun;
-    const url = template
-      .split('{namespace}').join('$(context.taskRun.namespace)')
-      .split('{pipelineRun}').join(`$(params.${PIPELINE_RUN_PARAM})`)
-      .split('{taskRun}').join('$(context.taskRun.name)');
+    const url = detailsUrlExpr(this.detailsUrl, kind);
     return `(${record} | merge { target_url: ${nuString(url)} })`;
   }
 
@@ -418,35 +415,4 @@ try {
       valueFrom: { secretKeyRef: { name: this.tokenSecretName, key: 'token' } },
     };
   }
-}
-
-// A nushell double-quoted string literal. JSON's escapes (\" \\ \n \t) are valid there too,
-// so a context containing a quote cannot end the literal early.
-function nuString(value: string): string {
-  return JSON.stringify(value);
-}
-
-// 45s, 3m12s, 1h05m: GitHub truncates long descriptions, so seconds drop once a run passes an hour.
-const FORMAT_DURATION_DEF = `def format-duration [secs: int]: nothing -> string {
-  let secs = ([$secs 0] | math max)
-  let h = $secs // 3600
-  let m = ($secs mod 3600) // 60
-  let s = $secs mod 60
-  let pad = { |n| $n | into string | fill -a right -w 2 -c '0' }
-  if $h > 0 {
-    $"($h)h(do $pad $m)m"
-  } else if $m > 0 {
-    $"($m)m(do $pad $s)s"
-  } else {
-    $"($s)s"
-  }
-}`;
-
-// Every context has been tried by the time this runs; exit non-zero once if any failed, so the
-// failure stays visible in the step's state.
-function failIfAny(label: string): string {
-  return `if ($failed | is-not-empty) {
-  log $"${label}: ($failed | length) failed: ($failed | str join ', ')"
-  exit 1
-}`;
 }

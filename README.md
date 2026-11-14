@@ -1,6 +1,8 @@
 # @tektonic-ci/reporter-github
 
-GitHub Commit Status reporter for [tektonic](https://github.com/tektonic-ci/core).
+GitHub reporters for [tektonic](https://github.com/tektonic-ci/core): `GitHubStatusReporter`
+posts commit statuses, and `GitHubChecksReporter` posts check runs that carry the failing
+step's output (see [Check runs](#check-runs)).
 
 Reports each task's outcome to the
 [GitHub Commit Status API](https://docs.github.com/en/rest/commits/statuses), so a
@@ -82,6 +84,79 @@ The status steps POST with nushell's `http post`, so they need an image providin
 They resolve through the project's `injectedStepImage` and synthesis fails naming the
 capability if it does not declare one — pass `image` to override per reporter.
 
+## Check runs
+
+`GitHubChecksReporter` reports each task as a GitHub
+[check run](https://docs.github.com/en/rest/checks/runs) instead of a commit status. A commit
+status holds a state, a 140-character description and a link. A check run can carry:
+
+- real `queued`, `in_progress` and `completed` states, with GitHub's own timing;
+- a Markdown summary: a table of the task's steps and how each ended;
+- the tail of the first failing step's output (ANSI colours stripped);
+- annotations parsed from that output, such as `./pkg/x.go:42:7: undefined: foo`, shown inline on the PR;
+- a `skipped` conclusion for tasks Tekton skipped, instead of a green status.
+
+```ts
+import { TektonicProject } from '@tektonic-ci/core';
+import { GitHubChecksReporter, tektonDashboardUrl } from '@tektonic-ci/reporter-github';
+
+const statusReporter = new GitHubChecksReporter({
+  skipTokenInjection: true,
+  detailsUrl: tektonDashboardUrl('https://tekton.example.com'),
+});
+
+new TektonicProject({
+  // ...
+  // The Checks API takes only a GitHub App installation token, so pass PAC's per-run App
+  // token to every step. PAC substitutes {{ git_auth_secret }} before submitting the run.
+  podTemplateEnv: [{
+    name: 'GITHUB_TOKEN',
+    valueFrom: { secretKeyRef: { name: '{{ git_auth_secret }}', key: 'git-provider-token' } },
+  }],
+});
+```
+
+**The token must be a GitHub App installation token.** A personal access token gets
+`403 Resource not accessible`. Under Pipelines as Code, use PAC's App token as shown above. The
+runs then belong to the PAC App's check suite. Outside PAC, put an App installation token in a
+Secret and pass `tokenSecretName`.
+
+**Step output is posted as printed, secrets included.** Anyone who can see the repository's
+checks can read it, which for a public repository means anyone. Pass `output: false` for a task
+that may print credentials. Annotations come from that output, so they go away with it.
+
+Options it shares with `GitHubStatusReporter` (`image`, `tokenSecretName`,
+`skipTokenInjection`, `repoFullNameParam`, `revisionParam`, `pendingTaskComputeResources`,
+`failOnError`, `detailsUrl`) mean the same here. On top of those:
+
+| Option | Default | |
+|---|---|---|
+| `output` | `{ maxBytes: 60000 }` | How much of the failing step's output to post, or `false`. 60000 is also the cap: GitHub limits a summary to 65535 characters |
+| `annotationPattern` | `DEFAULT_ANNOTATION_PATTERN` | Rust-syntax regex with named groups `path`, `line` and `message`, applied to each output line. `false` turns annotations off |
+
+How a run moves:
+
+1. The pending task creates a `queued` run per context, linked to the PipelineRun, and passes
+   each ID to its task through a pending-task result.
+2. When the task's pod starts, the run moves to `in_progress`, linked to the TaskRun.
+3. The task's final step completes it with `success` or `failure`, the summary, the output tail
+   and annotations.
+4. The `finally` reconciler concludes a skipped task's run as `skipped`, and the run of a task
+   killed before its final step (OOMKill, eviction, timeout, image pull) as `failure`. A run its
+   task already completed is left alone, so its summary survives.
+
+No GitHub failure fails a pipeline. If the pending task cannot create a run, the start step
+creates it; if neither could, the final step does. The pending task writes every result before
+it calls GitHub, so a pipeline never fails on a missing result.
+
+It needs core 2.5.0 or later, for `pendingTaskResults` and step-output capture. A
+`GitHubChecksReporter` and a `GitHubStatusReporter` can share a pipeline; each gets its own
+pending and reconciler task.
+
+Not verified yet: what Pipelines as Code does when someone presses **Re-run** on one of these
+check runs. GitHub sends the PAC App a `check_run.rerequested` event; PAC most likely re-runs
+the whole PipelineRun rather than the one task.
+
 ## Exports
 
 | Export | What it is |
@@ -92,6 +167,13 @@ capability if it does not declare one — pass `image` to override per reporter.
 | `tektonDashboardUrl(baseUrl)` | `detailsUrl` templates for a Tekton Dashboard |
 | `StatusDetailsUrl` | The `detailsUrl` option's type |
 | `PIPELINE_RUN_PARAM` | Name of the param `detailsUrl` adds (`pipeline-run-name`) |
+| `GitHubChecksReporter` | The check-runs `StatusReporter` |
+| `GitHubChecksReporterOptions` | Its constructor options |
+| `checkRunResultName(context)` | The pending-task result holding a context's check-run ID |
+| `CHECK_RUN_ID_PARAM` | The param a reporting task receives that ID in (`check-run-id`) |
+| `CHECK_RUN_ID_PATH` | Where the start step leaves the ID for the final step |
+| `DEFAULT_ANNOTATION_PATTERN` | The default `annotationPattern` |
+| `MAX_CHECK_OUTPUT_BYTES` | Default and cap for `output.maxBytes` (60000) |
 
 ## Why it is a separate package
 
