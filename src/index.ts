@@ -14,3 +14,12 @@
  */
 export { GitHubStatusReporter, PIPELINE_RUN_PARAM, statusParam, tektonDashboardUrl } from "./github-status-reporter";
 export type { GitHubStatusReporterOptions, StatusDetailsUrl } from "./github-status-reporter";
+export {
+  GitHubChecksReporter,
+  CHECK_RUN_ID_PARAM,
+  CHECK_RUN_ID_PATH,
+  DEFAULT_ANNOTATION_PATTERN,
+  MAX_CHECK_OUTPUT_BYTES,
+  checkRunResultName,
+} from "./github-checks-reporter";
+export type { GitHubChecksReporterOptions } from "./github-checks-reporter";

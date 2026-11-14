@@ -6,6 +6,26 @@ the entries below are the ones from core's changelog that concern it. From here 
 versions on its own, and releases only when it changes
 ([ADR 0002](https://github.com/tektonic-ci/core/blob/main/docs/adr/0002-npm-scope-and-versioning.md)).
 
+## Unreleased
+
+### Added: `GitHubChecksReporter`, check runs that carry the failing step's output
+
+A commit status holds a state, 140 characters and a link, so finding out why a task failed
+meant opening the Tekton console. `GitHubChecksReporter` reports each task as a check run
+instead: `queued`, then `in_progress` when its pod starts, then `completed`. The completed run
+carries a Markdown table of the task's steps, the tail of the first failing step's output, and
+annotations parsed from it (`path:line[:col]: message`, configurable via `annotationPattern`).
+The `finally` reconciler concludes skipped tasks as `skipped`, not green. It needs a GitHub App
+installation token, such as PAC's per-run token passed through `podTemplateEnv`. A PAT gets
+403. Step output is posted as printed, secrets included; `output: false` turns it off. Ships
+alongside `GitHubStatusReporter`, which is unchanged. (reporter-github-br7)
+
+### Changed: needs `@tektonic-ci/core` 2.5.0 or later
+
+The peer range moves from `^2` to `^2.5.0`. The checks reporter uses core's `stepOutputPath`,
+`pendingTaskResults` and step-output capture, all new in 2.5.0, and the package entry point
+loads both reporters.
+
 ## 2.3.0
 
 ### Added: Queued, then Running, then the result with its duration
