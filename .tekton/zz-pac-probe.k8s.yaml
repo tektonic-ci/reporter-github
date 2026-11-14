@@ -1,0 +1,32 @@
+# THROWAWAY PROBE (do not merge): does PAC substitute {{ }} placeholders inside a task file
+# referenced through the pipelinesascode.tekton.dev/task annotation?
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: pac-probe
+  annotations:
+    pipelinesascode.tekton.dev/on-event: "[pull_request]"
+    pipelinesascode.tekton.dev/on-target-branch: "[main]"
+    pipelinesascode.tekton.dev/task: "[.tekton/tasks/zz-pac-probe.k8s.yaml]"
+spec:
+  params:
+    - {name: repo-full-name, value: "{{ repo_owner }}/{{ repo_name }}"}
+    - {name: revision, value: "{{ revision }}"}
+  pipelineSpec:
+    params:
+      - {name: repo-full-name, type: string}
+      - {name: revision, type: string}
+    tasks:
+      - name: probe
+        params:
+          - {name: repo-full-name, value: $(params.repo-full-name)}
+          - {name: revision, value: $(params.revision)}
+        taskRef: {kind: Task, name: pac-probe}
+  taskRunTemplate:
+    podTemplate:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile: {type: RuntimeDefault}
