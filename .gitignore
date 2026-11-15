@@ -12,3 +12,6 @@ repomix-output.xml
 
 # local code-graph index (tokensave)
 .tokensave/
+
+# bd runtime lock
+.beads.gate.lock
