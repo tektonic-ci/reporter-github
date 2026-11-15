@@ -55,3 +55,5 @@
 
 export:
     auto: true
+sync:
+    remote: "git+ssh://git@github.com/tektonic-ci/reporter-github.git"
