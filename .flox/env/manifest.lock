@@ -5,7 +5,7 @@
     "install": {
       "beads": {
         "pkg-path": "beads",
-        "version": "1.0.3"
+        "version": "1.3.2"
       },
       "nodejs": {
         "pkg-path": "nodejs_24",
@@ -23,285 +23,6 @@
     "options": {}
   },
   "packages": [
-    {
-      "attr_path": "beads",
-      "broken": false,
-      "derivation": "/nix/store/0bij7n94ryg7rwzckma0s8zbkhifxz5x-beads-1.0.3.drv",
-      "description": "Lightweight memory system for AI coding agents with graph-based issue tracking",
-      "install_id": "beads",
-      "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "name": "beads-1.0.3",
-      "pname": "beads",
-      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "rev_count": 1017464,
-      "rev_date": "2026-06-16T02:33:49Z",
-      "scrape_date": "2026-06-17T03:13:13.639374Z",
-      "stabilities": [
-        "staging",
-        "unstable",
-        "stable"
-      ],
-      "unfree": false,
-      "version": "1.0.3",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/m0964ylgmhhv0pb8pf1zpjl704l9lplv-beads-1.0.3"
-      },
-      "system": "aarch64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "beads",
-      "broken": false,
-      "derivation": "/nix/store/7mh3rwjvfa38vzvw0vrbjlsvigfkgm8v-beads-1.0.3.drv",
-      "description": "Lightweight memory system for AI coding agents with graph-based issue tracking",
-      "install_id": "beads",
-      "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "name": "beads-1.0.3",
-      "pname": "beads",
-      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "rev_count": 1017464,
-      "rev_date": "2026-06-16T02:33:49Z",
-      "scrape_date": "2026-06-17T03:44:07.953265Z",
-      "stabilities": [
-        "staging",
-        "unstable",
-        "stable"
-      ],
-      "unfree": false,
-      "version": "1.0.3",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/6akl9hhdlhffsj09rpmaqb5f000ialll-beads-1.0.3"
-      },
-      "system": "aarch64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "beads",
-      "broken": false,
-      "derivation": "/nix/store/lp900w30n2dl97bbfkcfbxjnr59ncz6q-beads-1.0.3.drv",
-      "description": "Lightweight memory system for AI coding agents with graph-based issue tracking",
-      "install_id": "beads",
-      "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "name": "beads-1.0.3",
-      "pname": "beads",
-      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "rev_count": 1017464,
-      "rev_date": "2026-06-16T02:33:49Z",
-      "scrape_date": "2026-06-17T04:47:03.945510Z",
-      "stabilities": [
-        "staging",
-        "unstable",
-        "stable"
-      ],
-      "unfree": false,
-      "version": "1.0.3",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/b28s0b883v7n69mz4i250bbwbryisgqh-beads-1.0.3"
-      },
-      "system": "x86_64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "nushell",
-      "broken": false,
-      "derivation": "/nix/store/zh7rfmx9s8j2qczfb4k677v4zfklh382-nushell-0.113.1.drv",
-      "description": "Modern shell written in Rust",
-      "install_id": "nushell",
-      "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "name": "nushell-0.113.1",
-      "pname": "nushell",
-      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "rev_count": 1017464,
-      "rev_date": "2026-06-16T02:33:49Z",
-      "scrape_date": "2026-06-17T03:13:39.489773Z",
-      "stabilities": [
-        "staging",
-        "unstable",
-        "stable"
-      ],
-      "unfree": false,
-      "version": "0.113.1",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/0zcmb3zs2lm2r3cg7i3qdl5x3w7dfxrf-nushell-0.113.1"
-      },
-      "system": "aarch64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "nushell",
-      "broken": false,
-      "derivation": "/nix/store/iy0ar1c4fpficn5qcsyw1227rrkb2hjy-nushell-0.113.1.drv",
-      "description": "Modern shell written in Rust",
-      "install_id": "nushell",
-      "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "name": "nushell-0.113.1",
-      "pname": "nushell",
-      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "rev_count": 1017464,
-      "rev_date": "2026-06-16T02:33:49Z",
-      "scrape_date": "2026-06-17T03:44:48.549975Z",
-      "stabilities": [
-        "staging",
-        "unstable",
-        "stable"
-      ],
-      "unfree": false,
-      "version": "0.113.1",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/ra7vampb11z1cq9wdxhanpmn7aan0jpv-nushell-0.113.1"
-      },
-      "system": "aarch64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "nushell",
-      "broken": false,
-      "derivation": "/nix/store/r5mn0bqabvf1pag90f7f8dcgvqpwm0dh-nushell-0.113.1.drv",
-      "description": "Modern shell written in Rust",
-      "install_id": "nushell",
-      "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "name": "nushell-0.113.1",
-      "pname": "nushell",
-      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "rev_count": 1017464,
-      "rev_date": "2026-06-16T02:33:49Z",
-      "scrape_date": "2026-06-17T04:47:48.364062Z",
-      "stabilities": [
-        "staging",
-        "unstable",
-        "stable"
-      ],
-      "unfree": false,
-      "version": "0.113.1",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/6rf5daj415jnir6218pjk6b78phhx6pf-nushell-0.113.1"
-      },
-      "system": "x86_64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "repomix",
-      "broken": false,
-      "derivation": "/nix/store/5dnw0pmlqqchblzjy8ymdhcpawc3basc-repomix-1.14.0.drv",
-      "description": "Tool to pack repository contents to single file for AI consumption",
-      "install_id": "repomix",
-      "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "name": "repomix-1.14.0",
-      "pname": "repomix",
-      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "rev_count": 1017464,
-      "rev_date": "2026-06-16T02:33:49Z",
-      "scrape_date": "2026-06-17T03:14:48.082708Z",
-      "stabilities": [
-        "staging",
-        "unstable",
-        "stable"
-      ],
-      "unfree": false,
-      "version": "1.14.0",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/bq6vk7xn3a8znzjs0ajvmy432cncpah3-repomix-1.14.0"
-      },
-      "system": "aarch64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "repomix",
-      "broken": false,
-      "derivation": "/nix/store/gm7cd5lfciq073lcykfa2c0zi9r13c15-repomix-1.14.0.drv",
-      "description": "Tool to pack repository contents to single file for AI consumption",
-      "install_id": "repomix",
-      "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "name": "repomix-1.14.0",
-      "pname": "repomix",
-      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "rev_count": 1017464,
-      "rev_date": "2026-06-16T02:33:49Z",
-      "scrape_date": "2026-06-17T03:46:12.239518Z",
-      "stabilities": [
-        "staging",
-        "unstable",
-        "stable"
-      ],
-      "unfree": false,
-      "version": "1.14.0",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/rz94a9zrj0571y7lsy0yysx0vk175r3z-repomix-1.14.0"
-      },
-      "system": "aarch64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "repomix",
-      "broken": false,
-      "derivation": "/nix/store/x9vpi73bysq757m4gzxnlbrlby9y8p1d-repomix-1.14.0.drv",
-      "description": "Tool to pack repository contents to single file for AI consumption",
-      "install_id": "repomix",
-      "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "name": "repomix-1.14.0",
-      "pname": "repomix",
-      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "rev_count": 1017464,
-      "rev_date": "2026-06-16T02:33:49Z",
-      "scrape_date": "2026-06-17T04:49:14.282212Z",
-      "stabilities": [
-        "staging",
-        "unstable",
-        "stable"
-      ],
-      "unfree": false,
-      "version": "1.14.0",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/lwi1k403d1yi21zrq6xfhpxr0jbhn1g7-repomix-1.14.0"
-      },
-      "system": "x86_64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
     {
       "attr_path": "nodejs_24",
       "broken": false,
@@ -391,6 +112,276 @@
       "system": "x86_64-linux",
       "group": "nodejs",
       "priority": 5
+    },
+    {
+      "attr_path": "beads",
+      "broken": false,
+      "derivation": "/nix/store/5f2qxc8xkrnhrzh6m9lwxvpfq7q84xd8-beads-1.3.2.drv",
+      "description": "Lightweight memory system for AI coding agents with graph-based issue tracking",
+      "install_id": "beads",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "name": "beads-1.3.2",
+      "pname": "beads",
+      "rev": "d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "rev_count": 1117658,
+      "rev_date": "2026-11-11T08:42:49Z",
+      "scrape_date": "2026-11-13T05:52:01.841770Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.3.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/xdjhh7ssg3f83mfwv48l9q2yqs2jxxkz-beads-1.3.2"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "beads",
+      "broken": false,
+      "derivation": "/nix/store/lc5d3fwh25mhl2qfyy75jvzsxmnp16dz-beads-1.3.2.drv",
+      "description": "Lightweight memory system for AI coding agents with graph-based issue tracking",
+      "install_id": "beads",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "name": "beads-1.3.2",
+      "pname": "beads",
+      "rev": "d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "rev_count": 1117658,
+      "rev_date": "2026-11-11T08:42:49Z",
+      "scrape_date": "2026-11-13T06:21:03.031387Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.3.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/fba75pjdiclgpz9v7avj0s0qbkdjwd3q-beads-1.3.2"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "beads",
+      "broken": false,
+      "derivation": "/nix/store/2v5xmymag3bylb36vvljczkn7jy8snmm-beads-1.3.2.drv",
+      "description": "Lightweight memory system for AI coding agents with graph-based issue tracking",
+      "install_id": "beads",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "name": "beads-1.3.2",
+      "pname": "beads",
+      "rev": "d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "rev_count": 1117658,
+      "rev_date": "2026-11-11T08:42:49Z",
+      "scrape_date": "2026-11-13T06:52:55.342495Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.3.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/pa1q3cbmpg28l81r1cpxx6haprw4mdr3-beads-1.3.2"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nushell",
+      "broken": false,
+      "derivation": "/nix/store/3ayij26m25240bmzyyjld2hii8x695hh-nushell-0.116.1.drv",
+      "description": "Modern shell written in Rust",
+      "install_id": "nushell",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "name": "nushell-0.116.1",
+      "pname": "nushell",
+      "rev": "d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "rev_count": 1117658,
+      "rev_date": "2026-11-11T08:42:49Z",
+      "scrape_date": "2026-11-13T05:52:02.016220Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.116.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/zdgmkyjvag3g9297nl0d2jqcydm9k83i-nushell-0.116.1"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nushell",
+      "broken": false,
+      "derivation": "/nix/store/9agxjjy9jspwl5wdp6zrcyw79crqn7ay-nushell-0.116.1.drv",
+      "description": "Modern shell written in Rust",
+      "install_id": "nushell",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "name": "nushell-0.116.1",
+      "pname": "nushell",
+      "rev": "d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "rev_count": 1117658,
+      "rev_date": "2026-11-11T08:42:49Z",
+      "scrape_date": "2026-11-13T06:21:03.315477Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.116.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/dhfn54h4jj4npw7f1nnmiawgdpdbjwaa-nushell-0.116.1"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nushell",
+      "broken": false,
+      "derivation": "/nix/store/43fijrh2cdzma8dl7zgg3p7fw1jrx1gs-nushell-0.116.1.drv",
+      "description": "Modern shell written in Rust",
+      "install_id": "nushell",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "name": "nushell-0.116.1",
+      "pname": "nushell",
+      "rev": "d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "rev_count": 1117658,
+      "rev_date": "2026-11-11T08:42:49Z",
+      "scrape_date": "2026-11-13T06:52:55.515321Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.116.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/q7bya591hrzv5xdh61m2kx0kf00y8zpr-nushell-0.116.1"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "repomix",
+      "broken": false,
+      "derivation": "/nix/store/1b545i7p8ds22i578p8s4m8fvyb3w0zr-repomix-1.18.0.drv",
+      "description": "Tool to pack repository contents to single file for AI consumption",
+      "install_id": "repomix",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "name": "repomix-1.18.0",
+      "pname": "repomix",
+      "rev": "d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "rev_count": 1117658,
+      "rev_date": "2026-11-11T08:42:49Z",
+      "scrape_date": "2026-11-13T05:52:02.234233Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.18.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/4qllhfhk6dwijp20ng95cvm6y06ycz00-repomix-1.18.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "repomix",
+      "broken": false,
+      "derivation": "/nix/store/95n9vps69vsrrllhpv2lzn8hddczp68w-repomix-1.18.0.drv",
+      "description": "Tool to pack repository contents to single file for AI consumption",
+      "install_id": "repomix",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "name": "repomix-1.18.0",
+      "pname": "repomix",
+      "rev": "d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "rev_count": 1117658,
+      "rev_date": "2026-11-11T08:42:49Z",
+      "scrape_date": "2026-11-13T06:21:03.488272Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.18.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/akrd09vcm8rrcvgy02n51l6q3f2y7ykj-repomix-1.18.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "repomix",
+      "broken": false,
+      "derivation": "/nix/store/qdp415slxg5mmi66f66461rzdxhvrsi0-repomix-1.18.0.drv",
+      "description": "Tool to pack repository contents to single file for AI consumption",
+      "install_id": "repomix",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "name": "repomix-1.18.0",
+      "pname": "repomix",
+      "rev": "d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+      "rev_count": 1117658,
+      "rev_date": "2026-11-11T08:42:49Z",
+      "scrape_date": "2026-11-13T06:52:55.652521Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.18.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/xp2212yi06h3gg2g7crgzxw68yx6vv5z-repomix-1.18.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
     }
   ],
   "compose": {
@@ -408,7 +399,7 @@
       "include": {
         "environments": [
           {
-            "dir": "../common"
+            "dir": "../../common"
           }
         ]
       }
@@ -420,7 +411,7 @@
           "install": {
             "beads": {
               "pkg-path": "beads",
-              "version": "1.0.3"
+              "version": "1.3.2"
             },
             "nushell": {
               "pkg-path": "nushell"
@@ -435,7 +426,7 @@
         },
         "name": "planning",
         "descriptor": {
-          "dir": "../common"
+          "dir": "../../common"
         }
       }
     ],

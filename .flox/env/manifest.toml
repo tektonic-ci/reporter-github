@@ -65,7 +65,7 @@ nodejs.pkg-group = "nodejs"
 ## ------------------------------------------------------------------
 [include]
 environments = [
-    { dir = "../common" }
+    { dir = "../../common" }
 ]
 
 
