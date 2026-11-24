@@ -8,6 +8,8 @@ versions on its own, and releases only when it changes
 
 ## Unreleased
 
+## 2.6.0
+
 ### Added: `appAuth`, so check runs survive a queued or long PipelineRun
 
 PAC's per-run App token expires an hour after PAC creates the PipelineRun, time spent Pending in
