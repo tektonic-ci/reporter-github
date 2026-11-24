@@ -22,4 +22,4 @@ export {
   MAX_CHECK_OUTPUT_BYTES,
   checkRunResultName,
 } from "./github-checks-reporter";
-export type { GitHubChecksReporterOptions } from "./github-checks-reporter";
+export type { GitHubAppAuth, GitHubChecksReporterOptions } from "./github-checks-reporter";

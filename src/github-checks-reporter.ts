@@ -47,6 +47,19 @@ export const DEFAULT_ANNOTATION_PATTERN =
 /** GitHub accepts at most 50 annotations per check-run update. */
 const MAX_ANNOTATIONS = 50;
 
+/**
+ * A GitHub App the reporter authenticates as, minting its own installation token in each step
+ * instead of reading one from a Secret. See {@link GitHubChecksReporterOptions.appAuth}.
+ */
+export interface GitHubAppAuth {
+  /** Name of the Kubernetes Secret holding the App's ID and private key. */
+  secretName: string;
+  /** Key in {@link secretName} holding the App ID (or its client ID). Defaults to `"app-id"`. */
+  appIdKey?: string;
+  /** Key in {@link secretName} holding the App's PEM private key. Defaults to `"private-key"`. */
+  privateKeyKey?: string;
+}
+
 /** Options for constructing a {@link GitHubChecksReporter}. */
 export interface GitHubChecksReporterOptions
   extends Omit<GitHubStatusReporterOptions, 'tokenSecretName' | 'skipTokenInjection' | 'detailsUrl'> {
@@ -62,6 +75,21 @@ export interface GitHubChecksReporterOptions
   tokenSecretName?: string;
   /** Skip per-step `GITHUB_TOKEN` injection; the token is provided at the PipelineRun level. */
   skipTokenInjection?: boolean;
+  /**
+   * Authenticate as a GitHub App, minting a fresh installation token in every reporting step,
+   * instead of reading a token from {@link tokenSecretName}. Use it when a PipelineRun can
+   * outlive an hour from its creation: PAC's per-run token expires an hour after PAC creates
+   * the run, queued time included, and every check reported after that stays `queued` or
+   * `in_progress`.
+   *
+   * Each step signs a JWT with the App's private key (the image needs `openssl`), looks up the
+   * App's installation on the repository and asks for a token limited to that repository and
+   * `checks: write`. The check runs then belong to this App's check suite.
+   *
+   * Excludes `tokenSecretName` and `tokenSecretKey`. With `skipTokenInjection`, the step env
+   * must provide `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY` instead.
+   */
+  appAuth?: GitHubAppAuth;
   /** The check run's Details link. See {@link tektonDashboardUrl}. */
   detailsUrl?: StatusDetailsUrl;
   /**
@@ -107,6 +135,7 @@ export class GitHubChecksReporter implements StatusReporter {
   private readonly tokenSecretName: string;
   private readonly tokenSecretKey: string;
   private readonly skipTokenInjection: boolean;
+  private readonly appAuth?: Required<GitHubAppAuth>;
   private readonly repoParam: Param;
   private readonly revParam: Param;
   private readonly pendingComputeResources: GitHubChecksReporterOptions['pendingTaskComputeResources'];
@@ -122,6 +151,22 @@ export class GitHubChecksReporter implements StatusReporter {
     this.tokenSecretName = opts.tokenSecretName ?? 'github-token';
     this.tokenSecretKey = opts.tokenSecretKey ?? 'token';
     this.skipTokenInjection = opts.skipTokenInjection ?? false;
+    if (opts.appAuth) {
+      if (opts.tokenSecretName !== undefined || opts.tokenSecretKey !== undefined) {
+        throw new Error(
+          'GitHubChecksReporter: appAuth mints its own token, so tokenSecretName and tokenSecretKey ' +
+            'must not be set with it',
+        );
+      }
+      if (!opts.appAuth.secretName) {
+        throw new Error('GitHubChecksReporter: appAuth.secretName is required');
+      }
+      this.appAuth = {
+        secretName: opts.appAuth.secretName,
+        appIdKey: opts.appAuth.appIdKey ?? 'app-id',
+        privateKeyKey: opts.appAuth.privateKeyKey ?? 'private-key',
+      };
+    }
     this.repoParam = opts.repoFullNameParam ?? new Param({ name: 'repo-full-name', type: 'string' });
     this.revParam = opts.revisionParam ?? new Param({ name: 'revision', type: 'string' });
     this.detailsUrl = opts.detailsUrl;
@@ -155,6 +200,7 @@ export class GitHubChecksReporter implements StatusReporter {
       tokenSecretName: this.tokenSecretName,
       tokenSecretKey: this.tokenSecretKey,
       skipTokenInjection: this.skipTokenInjection,
+      appAuth: this.appAuth ?? null,
       repoParam: [this.repoParam.name, this.repoParam.type],
       revParam: [this.revParam.name, this.revParam.type],
       pendingComputeResources: this.pendingComputeResources ?? null,
@@ -225,9 +271,54 @@ export class GitHubChecksReporter implements StatusReporter {
   }
 
   private env() {
-    return this.skipTokenInjection
-      ? []
-      : [{ name: 'GITHUB_TOKEN', valueFrom: { secretKeyRef: { name: this.tokenSecretName, key: this.tokenSecretKey } } }];
+    if (this.skipTokenInjection) return [];
+    if (this.appAuth) {
+      const { secretName, appIdKey, privateKeyKey } = this.appAuth;
+      return [
+        { name: 'GITHUB_APP_ID', valueFrom: { secretKeyRef: { name: secretName, key: appIdKey } } },
+        { name: 'GITHUB_APP_PRIVATE_KEY', valueFrom: { secretKeyRef: { name: secretName, key: privateKeyKey } } },
+      ];
+    }
+    return [{ name: 'GITHUB_TOKEN', valueFrom: { secretKeyRef: { name: this.tokenSecretName, key: this.tokenSecretKey } } }];
+  }
+
+  // Signs an App JWT with openssl (nushell has no RSA), exchanges it for an installation token
+  // limited to this repository and checks: write, and leaves it in GITHUB_TOKEN for gh. A
+  // failure is logged and leaves GITHUB_TOKEN unset, so each call then fails and is handled the
+  // way an expired token would be.
+  private appTokenScript(): string {
+    if (!this.appAuth) return '';
+    return `
+def b64url []: string -> string { str replace -a '+' '-' | str replace -a '/' '_' | str replace -a '=' '' }
+
+def app-jwt []: nothing -> string {
+  let now = (date now | format date '%s' | into int)
+  # iat is backdated a minute for clock drift; GitHub rejects an exp more than 10 minutes out.
+  let header = ({ alg: "RS256", typ: "JWT" } | to json -r | encode base64 | b64url)
+  let claims = ({ iat: ($now - 60), exp: ($now + 540), iss: ($env.GITHUB_APP_ID | str trim) } | to json -r | encode base64 | b64url)
+  let key = (mktemp -t tektonic-app-key.XXXXXX)
+  try {
+    $env.GITHUB_APP_PRIVATE_KEY | save -f $key
+    let sig = ($"($header).($claims)" | ^openssl dgst -sha256 -sign $key -binary | ^openssl base64 -A | b64url)
+    rm -f $key
+    $"($header).($claims).($sig)"
+  } catch { |e| rm -f $key; error make { msg: $e.msg } }
+}
+
+def app-token []: nothing -> string {
+  let headers = [
+    Authorization $"Bearer (app-jwt)"
+    Accept "application/vnd.github+json"
+    X-GitHub-Api-Version "2022-11-28"
+  ]
+  let repo = "${this.repo()}"
+  let installation = (http get $"https://api.github.com/repos/($repo)/installation" -H $headers | get id)
+  let body = { repositories: [($repo | split row "/" | last)], permissions: { checks: "write" } }
+  http post $"https://api.github.com/app/installations/($installation)/access_tokens" $body -t application/json -H $headers | get token
+}
+
+try { $env.GITHUB_TOKEN = (app-token) } catch { |e| log $"github-app: cannot mint an installation token: ($e.msg)" }
+`;
   }
 
   private pendingScript(contexts: string[]): Script {
@@ -431,7 +522,7 @@ ${failIfAny('reconcile-status')}`);
 def now-iso []: nothing -> string { date now | date to-timezone UTC | format date '%Y-%m-%dT%H:%M:%SZ' }
 
 def param-id [value: string]: nothing -> any { if ($value | str trim) =~ '^\\d+$' { $value | str trim } else { null } }
-
+${this.appTokenScript()}
 ${body}`);
   }
 

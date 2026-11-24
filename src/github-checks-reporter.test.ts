@@ -189,6 +189,70 @@ describe('GitHubChecksReporter', () => {
     });
   });
 
+  describe('appAuth', () => {
+    const appAuth = { secretName: 'ci-app' };
+    const envOf = (step: { env?: unknown }) => step.env as AnyObj[];
+
+    it('injects the App ID and private key on every reporting step, and no GITHUB_TOKEN', () => {
+      const r = new GitHubChecksReporter({ appAuth });
+      const expected = [
+        { name: 'GITHUB_APP_ID', valueFrom: { secretKeyRef: { name: 'ci-app', key: 'app-id' } } },
+        { name: 'GITHUB_APP_PRIVATE_KEY', valueFrom: { secretKeyRef: { name: 'ci-app', key: 'private-key' } } },
+      ];
+      expect(envOf(r.startStep('ci/x'))).toEqual(expected);
+      expect(envOf(r.finalStep('ci/x'))).toEqual(expected);
+      expect(envOf(r.createPendingTask(['ci/x']).steps[0])).toEqual(expected);
+      expect(envOf(r.createStatusReconcilerTask([{ taskName: 'x', context: 'ci/x' }]).steps[0])).toEqual(expected);
+    });
+
+    it('reads the keys it is told to', () => {
+      const env = envOf(new GitHubChecksReporter({ appAuth: { secretName: 's', appIdKey: 'id', privateKeyKey: 'pem' } }).finalStep('ci/x'));
+      expect(env.map((e) => e.valueFrom.secretKeyRef.key)).toEqual(['id', 'pem']);
+    });
+
+    it('injects nothing with skipTokenInjection', () => {
+      expect(new GitHubChecksReporter({ appAuth, skipTokenInjection: true }).finalStep('ci/x').env).toEqual([]);
+    });
+
+    it('rejects a token secret alongside it, and a missing secret name', () => {
+      expect(() => new GitHubChecksReporter({ appAuth, tokenSecretName: 't' })).toThrow(/tokenSecretName/);
+      expect(() => new GitHubChecksReporter({ appAuth, tokenSecretKey: 'k' })).toThrow(/tokenSecretKey/);
+      expect(() => new GitHubChecksReporter({ appAuth: { secretName: '' } })).toThrow(/secretName/);
+    });
+
+    it('mints a repository-scoped checks token before any GitHub call in every script', () => {
+      const { tasks } = synth(new GitHubChecksReporter({ appAuth }));
+      const scripts = [
+        stepScript(tasks['go-test'], 'report-running'),
+        stepScript(tasks['go-test'], 'report-status'),
+        stepScript(tasks['set-status-pending-ci'], 'pending'),
+      ];
+      for (const script of scripts) {
+        expect(script).toContain('try { $env.GITHUB_TOKEN = (app-token) }');
+        expect(script).toContain('/app/installations/($installation)/access_tokens');
+        expect(script).toContain('permissions: { checks: "write" }');
+        expect(script).toContain('$"https://api.github.com/repos/($repo)/installation"');
+        expect(script).toContain('let repo = "$(params.repo-full-name)"');
+        // The token exists before the first call the script makes.
+        expect(script.indexOf('$env.GITHUB_TOKEN = (app-token)')).toBeLessThan(script.lastIndexOf('gh '));
+      }
+    });
+
+    it('leaves scripts without appAuth untouched', () => {
+      expect(stepScript(synth().tasks['go-test'], 'report-status')).not.toContain('app-token');
+    });
+
+    it('keeps its own pending task', () => {
+      expect(new GitHubChecksReporter({ appAuth }).pendingGroupKey()).not.toBe(new GitHubChecksReporter().pendingGroupKey());
+      expect(new GitHubChecksReporter({ appAuth }).pendingGroupKey())
+        .not.toBe(new GitHubChecksReporter({ appAuth: { secretName: 'other' } }).pendingGroupKey());
+    });
+
+    it('holds conformance', () => {
+      assertStatusReporterConformance(() => new GitHubChecksReporter({ appAuth }), { injectedStepImage });
+    });
+  });
+
   describe('grouping', () => {
     it('shares a pending task between reporters that differ only in final-step options', () => {
       expect(new GitHubChecksReporter({ failOnError: false, output: false }).pendingGroupKey())
