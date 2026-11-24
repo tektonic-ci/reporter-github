@@ -120,9 +120,28 @@ template env [precedence over step env](https://github.com/tektoncd/pipeline/blo
 so it silently replaces any `GITHUB_TOKEN` a step sets for itself, such as a PAT used for SARIF
 upload.
 
-**Long pipelines.** The App token expires an hour after the PipelineRun starts. Calls made after
-that fail, and the run is left as it was: a task finishing after the hour leaves its check
-`in_progress`.
+**Long or queued pipelines: use `appAuth`.** PAC's token expires an hour after PAC *creates* the
+PipelineRun, and that hour includes any time the run waits in a Repository's
+`concurrency_limit` queue. Calls made after that fail and leave the check as it was: `queued`, or
+`in_progress` for a task that was running. A Renovate automerge or a required check then waits
+forever. With `appAuth`, every reporting step mints its own short-lived installation token from a
+GitHub App's private key, so the reporter works however long the run waits or runs:
+
+```ts
+const statusReporter = new GitHubChecksReporter({
+  // A Secret with `app-id` (App ID or client ID) and `private-key` (the App's PEM key).
+  appAuth: { secretName: 'github-checks-app' },
+  detailsUrl: tektonDashboardUrl('https://tekton.example.com'),
+});
+```
+
+Each step signs a JWT with `openssl` (the reporter's image must provide it, alongside nushell),
+looks up the App's installation on the repository, and asks for a token limited to that one
+repository and `checks: write`. Give the App only **Checks: read and write** and install it on the
+repositories it reports for. Its private key can mint tokens for every installation of the App,
+so prefer an App of its own over the PAC App's key. The check runs belong to this App's check
+suite, and `appAuth` excludes `tokenSecretName`/`tokenSecretKey`. `appIdKey` and `privateKeyKey`
+rename the Secret keys.
 
 **Step output is posted as printed, secrets included.** Anyone who can see the repository's
 checks can read it, which for a public repository means anyone. Pass `output: false` for a task
@@ -134,6 +153,7 @@ Options it shares with `GitHubStatusReporter` (`image`, `tokenSecretName`, `toke
 
 | Option | Default | |
 |---|---|---|
+| `appAuth` | none | `{ secretName, appIdKey?, privateKeyKey? }`: mint a fresh GitHub App installation token in every step instead of reading `tokenSecretName`. See above |
 | `output` | `{ maxBytes: 60000 }` | How much of the failing step's output to post, or `false`. 60000 is also the cap: GitHub limits a summary to 65535 characters |
 | `annotationPattern` | `DEFAULT_ANNOTATION_PATTERN` | Rust-syntax regex with named groups `path`, `line` and `message`, applied to each output line. `false` turns annotations off |
 

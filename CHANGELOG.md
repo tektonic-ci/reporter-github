@@ -8,6 +8,16 @@ versions on its own, and releases only when it changes
 
 ## Unreleased
 
+### Added: `appAuth`, so check runs survive a queued or long PipelineRun
+
+PAC's per-run App token expires an hour after PAC creates the PipelineRun, time spent Pending in
+a Repository's `concurrency_limit` queue included. Every check reported after that stayed
+`queued` or `in_progress` for good, which held up automerges that wait on all checks.
+`GitHubChecksReporter`'s new `appAuth: { secretName, appIdKey?, privateKeyKey? }` reads a GitHub
+App's ID and private key instead of a token. Each reporting step signs a JWT with `openssl` and
+exchanges it for an installation token limited to the repository and `checks: write`. The image
+needs `openssl`, which `ghcr.io/pfenerty/apko-cicd/base` has. (reporter-github-pqj)
+
 ## 2.5.0
 
 ### Added: `tokenSecretKey`, for PAC's per-run token on the reporter's steps alone
